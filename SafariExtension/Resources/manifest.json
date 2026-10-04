@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Form Fill",
+  "description": "日本の姓名・住所入力を支援する拡張の開発用土台です。",
+  "version": "0.1.0",
+  "permissions": ["activeTab", "scripting", "nativeMessaging"],
+  "background": { "scripts": ["background.js"], "persistent": false },
+  "action": { "default_popup": "popup.html", "default_title": "Form Fill" },
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'" }
+}

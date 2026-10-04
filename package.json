@@ -1,0 +1,6 @@
+{
+  "name": "form-fill-extension-checks",
+  "private": true,
+  "scripts": { "test": "node --test --test-isolation=none Tests/Web/*.test.cjs", "check": "python3 scripts/check-scaffold.py" },
+  "engines": { "node": ">=22.8" }
+}
