@@ -25,6 +25,7 @@ jobs:
       - run: brew install xcodegen
       - run: swiftc Shared/FillPlan.swift Tests/Native/main.swift -o /tmp/fill-planner-tests && /tmp/fill-planner-tests
       - run: xcodegen generate
+      - run: git diff --exit-code -- App/Info.plist SafariExtension/Info.plist
       - run: >-
           xcodebuild -project FormFill.xcodeproj -scheme FormFill
           -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'

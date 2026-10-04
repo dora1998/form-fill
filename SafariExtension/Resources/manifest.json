@@ -3,7 +3,7 @@
   "name": "Form Fill",
   "description": "固定のダミー姓名・住所でSafariの自動入力を検証します。",
   "version": "0.1.0",
-  "permissions": ["activeTab", "scripting", "nativeMessaging"],
+  "permissions": ["activeTab", "scripting", "nativeMessaging", "clipboardWrite"],
   "background": { "scripts": ["background.js"], "persistent": false },
   "action": { "default_popup": "popup.html", "default_title": "Form Fill" },
   "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'" }
