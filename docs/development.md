@@ -36,8 +36,10 @@ READMEの手順でXcodeGenプロジェクトを生成する。`FormFill` アプ�
 | `npm test` | Linux / Node.js 24.19.0 | 4件成功（ブラウザー・DOMはモック） |
 | `npm run check` | Linux / Python 3 | plist、manifest、権限、リソース参照の静的チェック成功 |
 | `project.yml` 読込 | Linux / PyYAML | YAMLとして読込成功、アプリ・拡張の2ターゲットを確認 |
-| XcodeGen生成・iOSビルド | macOSが必要 | 未実行。CI定義を追加したがCI自体も未実行 |
+| XcodeGen生成・iOSビルド | GitHub Actions / macOS / Xcode 26.0 | 初回PRのCIで署名なしSimulatorビルド成功 |
 | Safari疎通・LLM利用 | iPhoneが必要 | 未実行 |
+
+初回CIのwebジョブは、Node.js 22が `--test-isolation=none` に対応せず起動時に失敗した。テスト起動オプションを維持し、CI・package.json・開発手順を検証済みのNode.js 24以降へ統一した。
 
 ## 次に行う実験
 

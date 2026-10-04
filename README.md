@@ -36,7 +36,7 @@ xcodebuild -project FormFill.xcodeproj -scheme FormFill \
 
 ## ローカル検証
 
-Node.js 22.8以降、Python 3を使用します。npmパッケージのインストールは不要です。
+Node.js 24以降、Python 3を使用します。npmパッケージのインストールは不要です。
 
 ```sh
 npm test
@@ -45,7 +45,7 @@ npm run check
 
 JavaScriptテストはブラウザーAPIとDOMのモックを使って、固定のnative message、安全な入力欄カウント、ポップアップの成功・失敗を検証します。静的チェックはplistとmanifestの整合性、権限、リソース参照を検証します。これらはiOSビルド・Safari実機動作・LLM精度の検証を代替しません。
 
-`.github/workflows/validate.yml` にmacOSでのプロジェクト生成・署名なしビルドとローカル検証を定義しています。この開発環境はLinuxのため、Xcodeビルドと実機動作は未実行です。
+`.github/workflows/validate.yml` にmacOSでのプロジェクト生成・署名なしビルドとローカル検証を定義しています。PRのmacOS CIでXcodeGen生成・署名なしビルドは成功しました。Safari実機動作は未検証です。
 
 ## 構成
 
