@@ -51,7 +51,7 @@ npm run check
 
 JavaScriptテストはブラウザーAPIとDOMのモックを使って、固定のnative message、安全な入力欄カウント、ポップアップの成功・失敗を検証します。静的チェックはplistとmanifestの整合性、権限、リソース参照を検証します。これらはiOSビルド・Safari実機動作・LLM精度の検証を代替しません。
 
-`.github/workflows/validate.yml` にmacOSでのプロジェクト生成・署名なしビルドとローカル検証を定義しています。PRのmacOS CIでXcodeGen生成・署名なしビルドは成功しました。Safari実機動作は未検証です。
+`.github/workflows/validate.yml` にmacOSでのプロジェクト生成・署名なしビルドとローカル検証を定義しています。PRのmacOS CIに加え、iPhone 17でSafari拡張のネイティブ連携とFoundation Modelsの固定文生成も確認済みです。詳しい条件は[開発と検証の手順](docs/development.md)を参照してください。
 
 ## 構成
 
