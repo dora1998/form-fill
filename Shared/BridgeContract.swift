@@ -3,6 +3,15 @@ import Foundation
 enum BridgeContract {
     static let version = 1
 
+    static func requestType(from message: Any?) -> String? {
+        (message as? [String: Any])?["type"] as? String
+    }
+
+    static func isValidModelProbe(_ message: Any?) -> Bool {
+        guard let request = message as? [String: Any] else { return false }
+        return request["version"] as? Int == version && request["type"] as? String == "modelProbe"
+    }
+
     // Only diagnostics are implemented. Never echo arbitrary webpage data.
     static func response(to message: Any?) -> [String: Any] {
         guard let request = message as? [String: Any],
@@ -14,7 +23,7 @@ enum BridgeContract {
         return [
             "version": version,
             "ok": true,
-            "capabilities": ["nativeBridge": true, "profileStorage": false, "localModel": false, "autofill": false]
+            "capabilities": ["nativeBridge": true, "profileStorage": false, "localModelProbe": true, "localModel": false, "autofill": false]
         ]
     }
 }

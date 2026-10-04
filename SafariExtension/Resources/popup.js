@@ -1,5 +1,7 @@
 const button = document.querySelector("#check");
 const status = document.querySelector("#status");
+const modelButton = document.querySelector("#check-model");
+const modelStatus = document.querySelector("#model-status");
 button.addEventListener("click", async () => {
   button.disabled = true;
   status.textContent = "確認中…";
@@ -16,5 +18,33 @@ button.addEventListener("click", async () => {
     status.textContent = "確認できませんでした。通常のWebページを開き、Safariでこのサイトへの拡張のアクセスを許可してください。改善しない場合は拡張を有効にし直してください。";
   } finally {
     button.disabled = false;
+  }
+});
+
+const unavailableReasons = {
+  apple_intelligence_not_enabled: "Apple Intelligenceが無効です。設定を確認してください。",
+  device_not_eligible: "この端末はApple Intelligenceに対応していません。",
+  model_not_ready: "モデルがまだ準備できていません。ダウンロード完了後に再試行してください。",
+  unknown: "モデルの利用可否を特定できませんでした。"
+};
+
+modelButton.addEventListener("click", async () => {
+  modelButton.disabled = true;
+  modelStatus.textContent = "拡張プロセスでモデルを確認中…";
+  try {
+    const result = await browser.runtime.sendMessage({ type: "modelProbe" });
+    if (result?.version !== 1 || result?.ok !== true) throw new Error("model_probe");
+    if (!result.available) {
+      modelStatus.textContent = unavailableReasons[result.reason] ?? unavailableReasons.unknown;
+      return;
+    }
+    if (result.process !== "safari_web_extension" || typeof result.result !== "string") {
+      throw new Error("invalid_model_response");
+    }
+    modelStatus.textContent = `拡張プロセスから生成成功: ${result.result}`;
+  } catch {
+    modelStatus.textContent = "モデル呼び出しに失敗しました。拡張とネイティブ連携を確認してください。";
+  } finally {
+    modelButton.disabled = false;
   }
 });

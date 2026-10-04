@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const resource = file => fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources', file), 'utf8');
 
-test('native bridge forwards only a fixed health request from the extension popup', async () => {
+test('native bridge forwards only fixed diagnostic requests from the extension popup', async () => {
   let listener;
   const forwarded = [];
   const browser = { runtime: {
@@ -19,10 +19,15 @@ test('native bridge forwards only a fixed health request from the extension popu
   assert.deepEqual(JSON.parse(JSON.stringify(forwarded)), [{
     app: 'dev.formfill.app.extension', message: { version: 1, type: 'health' }
   }]);
+  await listener({ type: 'modelProbe', prompt: 'must not be forwarded' }, { id: 'extension-id' });
+  assert.deepEqual(JSON.parse(JSON.stringify(forwarded[1])), {
+    app: 'dev.formfill.app.extension', message: { version: 1, type: 'modelProbe' }
+  });
   await listener({ type: 'health' }, { id: 'extension-id', tab: { id: 1 } });
   await listener({ type: 'health' }, { id: 'other-extension' });
   await listener({ type: 'fill' }, { id: 'extension-id' });
-  assert.equal(forwarded.length, 1);
+  await listener({ type: 'unknown' }, { id: 'extension-id' });
+  assert.equal(forwarded.length, 2);
 });
 
 test('page diagnostics exclude sensitive or unusable inputs and never access values', async () => {
@@ -50,19 +55,25 @@ test('page diagnostics exclude sensitive or unusable inputs and never access val
   assert.equal(listener({ type: 'inspect' }, { id: 'external' }), undefined);
 });
 
-function popupContext(nativeResponse, failInjection = false) {
+function popupContext(nativeResponse, failInjection = false, modelResponse = null) {
   let click;
+  let clickModel;
   const button = { disabled: false, addEventListener: (_, fn) => { click = fn; } };
   const status = { textContent: '' };
+  const modelButton = { disabled: false, addEventListener: (_, fn) => { clickModel = fn; } };
+  const modelStatus = { textContent: '' };
   const context = { document: { querySelector: selector => selector === '#check' ? button : status },
     browser: {
-      runtime: { sendMessage: async () => nativeResponse },
+      runtime: { sendMessage: async message => message.type === 'modelProbe' ? modelResponse : nativeResponse },
       tabs: { query: async () => [{ id: 5 }], sendMessage: async () => ({ version: 1, fieldCount: 4 }) },
       scripting: { executeScript: async () => { if (failInjection) throw new Error('access denied'); } }
     }
   };
+  context.document.querySelector = selector => ({
+    '#check': button, '#status': status, '#check-model': modelButton, '#model-status': modelStatus
+  })[selector];
   vm.runInNewContext(resource('popup.js'), context);
-  return { button, status, click: () => click() };
+  return { button, status, modelButton, modelStatus, click: () => click(), clickModel: () => clickModel() };
 }
 
 test('popup shows successful native and page diagnostics', async () => {
@@ -78,4 +89,22 @@ test('popup recovers from native failures and denied page access', async () => {
     assert.match(popup.status.textContent, /確認できませんでした/);
     assert.equal(popup.button.disabled, false);
   }
+});
+
+test('popup reports a model response returned by the native extension process', async () => {
+  const popup = popupContext(null, false, {
+    version: 1, ok: true, available: true, process: 'safari_web_extension', result: 'FORM_FILL_LOCAL_MODEL_OK'
+  });
+  await popup.clickModel();
+  assert.match(popup.modelStatus.textContent, /拡張プロセスから生成成功.*FORM_FILL_LOCAL_MODEL_OK/);
+  assert.equal(popup.modelButton.disabled, false);
+});
+
+test('popup explains unavailable models and recovers from model errors', async () => {
+  const unavailable = popupContext(null, false, { version: 1, ok: true, available: false, reason: 'model_not_ready' });
+  await unavailable.clickModel();
+  assert.match(unavailable.modelStatus.textContent, /まだ準備できていません/);
+  const failed = popupContext(null, false, { version: 1, ok: false, error: 'generation_failed' });
+  await failed.clickModel();
+  assert.match(failed.modelStatus.textContent, /モデル呼び出しに失敗しました/);
 });
