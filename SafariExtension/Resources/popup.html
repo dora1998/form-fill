@@ -3,9 +3,20 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="popup.css"><title>Form Fill</title></head>
 <body>
   <h1>Form Fill</h1>
-  <p>アプリとSafari拡張の開発用疎通確認です。</p>
+  <p>固定の架空プロフィールでフォーム入力を試せます。</p>
+  <p>山田 太郎 / ヤマダ タロウ<br>100-0001 東京都千代田区千代田1-1<br>テストマンション101号室</p>
+  <p>入力すると、このサイトにダミー値が渡ります。都道府県の選択欄は上書きし、ほかの既存入力は保持します。フォームの送信は行いません。</p>
+  <button id="analyze" type="button">このページを解析</button>
+  <p id="fill-status" role="status" aria-live="polite"></p>
+  <section id="preview" hidden>
+    <p id="site"></p>
+    <ul id="plan"></ul>
+    <ul id="skipped"></ul>
+    <button id="fill" type="button" disabled>ダミー情報を入力する</button>
+  </section>
+  <hr>
   <button id="check" type="button">このページで疎通を確認</button>
-  <p id="status" role="status" aria-live="polite">入力値の読み取り・自動入力は行いません。</p>
+  <p id="status" role="status" aria-live="polite">疎通確認では入力値の読み取り・自動入力は行いません。</p>
   <button id="check-model" type="button">拡張からローカルモデルを確認</button>
   <p id="model-status" role="status" aria-live="polite">固定の診断文だけをモデルへ送り、ページ内容や入力値は送りません。</p>
   <script src="popup.js"></script>

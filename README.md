@@ -2,7 +2,9 @@
 
 日本の姓名・住所を入力欄に合わせて自動入力する、iOSアプリ＋Safari Web Extensionの開発リポジトリです。フォームの意味をオンデバイスLLMで分類し、登録情報をローカルで組み立てる設計を検討しています。
 
-現在は **SwiftUIアプリ、Safari拡張、ネイティブ疎通確認の土台** です。プロフィール保存・自動入力・フォーム分類は未実装です。Foundation Modelsの短い固定文をSafari拡張プロセスから呼ぶ診断ボタンを用意していますが、フォームデータは扱いません。
+現在は **固定のダミープロフィールによる自動入力プロトタイプ** です。Safariで入力欄を抽出し、明確な欄はルール、曖昧な欄はFoundation Modelsで分類します。入力予定値を確認してから入力できます。プロフィール保存は未実装で、実機での分類精度はこれから検証します。
+
+ダミー値: 山田 太郎 / ヤマダ タロウ / 100-0001 / 東京都千代田区千代田1-1 / テストマンション101号室。モデルにはフォームのメタデータだけを送り、姓名・住所の値はコードで合成します。都道府県の選択欄は上書きし、ほかの既存入力は保持します。自動送信は行いません。
 
 ## 仕様
 
@@ -32,7 +34,7 @@ xcodebuild -project FormFill.xcodeproj -scheme FormFill \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-実機へアプリをインストールし、Safariの機能拡張でForm Fillを有効化してください。フォームのあるページで拡張を開き「このページで疎通を確認」を選ぶと、ネイティブ連携の結果と入力欄の個数を表示します。
+実機へアプリをインストールし、Safariの機能拡張でForm Fillを有効化してください。フォームのあるページで拡張を開き「このページを解析」→プレビュー確認→「ダミー情報を入力する」を選びます。Apple Intelligenceが未準備・利用不能の場合は理由を表示します。疎通・モデル診断ボタンも残しています。
 
 ### Safari拡張内からのローカルモデル診断
 
@@ -49,7 +51,7 @@ npm test
 npm run check
 ```
 
-JavaScriptテストはブラウザーAPIとDOMのモックを使って、固定のnative message、安全な入力欄カウント、ポップアップの成功・失敗を検証します。静的チェックはplistとmanifestの整合性、権限、リソース参照を検証します。これらはiOSビルド・Safari実機動作・LLM精度の検証を代替しません。
+JavaScriptテストはブラウザーAPIとDOMのモックを使って、native message、安全な入力欄カウント、ポップアップの成功・失敗を検証します。Swiftの値合成テストと実DOMのWebKitテストは[開発手順](docs/development.md)を参照してください。静的チェックはplistとmanifestの整合性、権限、リソース参照を検証します。これらはiOSビルド・Safari実機動作・LLM精度の検証を代替しません。
 
 `.github/workflows/validate.yml` にmacOSでのプロジェクト生成・署名なしビルドとローカル検証を定義しています。PRのmacOS CIに加え、iPhone 17でSafari拡張のネイティブ連携とFoundation Modelsの固定文生成も確認済みです。詳しい条件は[開発と検証の手順](docs/development.md)を参照してください。
 
@@ -58,7 +60,7 @@ JavaScriptテストはブラウザーAPIとDOMのモックを使って、固定�
 ```text
 App/                        SwiftUIアプリ
 SafariExtension/            ネイティブハンドラーと拡張リソース
-Shared/                     native messageの疎通契約
+Shared/                     メッセージ検証・固定プロフィール・値合成
 Fixtures/                   実機確認用の合成フォーム
 Tests/Web/                  拡張のJavaScriptテスト
 docs/                       仕様、設計、開発手順

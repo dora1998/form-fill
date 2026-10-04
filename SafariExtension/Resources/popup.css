@@ -4,3 +4,9 @@ h1 { font-size: 22px; margin-top: 0; }
 p { font-size: 14px; line-height: 1.6; }
 button { width: 100%; padding: 12px; border: 0; border-radius: 10px; background: #245ac7; color: white; font: inherit; }
 button:disabled { opacity: .6; }
+
+body { width: 320px; box-sizing: border-box; }
+li { font-size: 13px; line-height: 1.5; margin: 10px 0; overflow-wrap: anywhere; }
+ul { padding-left: 20px; }
+hr { border: 0; border-top: 1px solid #aaa6; margin: 24px 0; }
+#skipped { opacity: .75; }

@@ -12,7 +12,7 @@ enum BridgeContract {
         return request["version"] as? Int == version && request["type"] as? String == "modelProbe"
     }
 
-    // Only diagnostics are implemented. Never echo arbitrary webpage data.
+    // Fixed health response. Never echo arbitrary webpage data.
     static func response(to message: Any?) -> [String: Any] {
         guard let request = message as? [String: Any],
               let requestVersion = request["version"] as? Int,
@@ -23,7 +23,7 @@ enum BridgeContract {
         return [
             "version": version,
             "ok": true,
-            "capabilities": ["nativeBridge": true, "profileStorage": false, "localModelProbe": true, "localModel": false, "autofill": false]
+            "capabilities": ["nativeBridge": true, "profileStorage": false, "localModelProbe": true, "localModel": true, "autofill": true]
         ]
     }
 }

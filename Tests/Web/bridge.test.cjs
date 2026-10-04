@@ -70,7 +70,8 @@ function popupContext(nativeResponse, failInjection = false, modelResponse = nul
     }
   };
   context.document.querySelector = selector => ({
-    '#check': button, '#status': status, '#check-model': modelButton, '#model-status': modelStatus
+    '#check': button, '#status': status, '#check-model': modelButton, '#model-status': modelStatus,
+    '#analyze': { addEventListener() {} }, '#fill': { addEventListener() {} }, '#fill-status': {}, '#preview': {}
   })[selector];
   vm.runInNewContext(resource('popup.js'), context);
   return { button, status, modelButton, modelStatus, click: () => click(), clickModel: () => clickModel() };
@@ -107,4 +108,18 @@ test('popup explains unavailable models and recovers from model errors', async (
   const failed = popupContext(null, false, { version: 1, ok: false, error: 'generation_failed' });
   await failed.clickModel();
   assert.match(failed.modelStatus.textContent, /モデル呼び出しに失敗しました/);
+});
+
+test('analysis bridge forwards bounded metadata, excludes current values and rejects content scripts', async () => {
+  let listener;
+  const forwarded = [];
+  const browser = { runtime: { id: 'extension-id', onMessage: { addListener: fn => { listener = fn; } },
+    sendNativeMessage: async (_, message) => { forwarded.push(message); return { ok: true }; } } };
+  vm.runInNewContext(resource('background.js'), { browser });
+  await listener({ type: 'analyzeForm', requestID: 'request', fields: [{ id: 'f0', label: '姓', value: 'private', options: [] }], url: 'private-url' }, { id: 'extension-id' });
+  assert.equal(forwarded.length, 1);
+  assert.equal(JSON.stringify(forwarded).includes('private'), false);
+  await listener({ type: 'analyzeForm', requestID: 'request', fields: [] }, { id: 'extension-id', tab: { id: 1 } });
+  await listener({ type: 'analyzeForm', requestID: 'request', fields: Array(41).fill({}) }, { id: 'extension-id' });
+  assert.equal(forwarded.length, 1);
 });
