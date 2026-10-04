@@ -23,6 +23,7 @@ jobs:
         with:
           xcode-version: '26.0'
       - run: brew install xcodegen
+      - run: swiftc Shared/FillPlan.swift Tests/Native/main.swift -o /tmp/fill-planner-tests && /tmp/fill-planner-tests
       - run: xcodegen generate
       - run: >-
           xcodebuild -project FormFill.xcodeproj -scheme FormFill

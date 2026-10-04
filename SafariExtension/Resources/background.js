@@ -1,11 +1,17 @@
-/* Safari delivers native messages to the containing app's web extension handler. */
+/* Only the extension popup can request native classification. */
 browser.runtime.onMessage.addListener((message, sender) => {
-  // Content scripts/websites cannot use this diagnostic entrypoint.
-  if (sender.tab || sender.id !== browser.runtime.id || !["health", "modelProbe"].includes(message?.type)) {
-    return Promise.resolve({ version: 1, ok: false, error: "unsupported_request" });
+  if (sender.tab || sender.id !== browser.runtime.id || !['health', 'modelProbe', 'analyzeForm'].includes(message?.type)) {
+    return Promise.resolve({ version: 1, ok: false, error: 'unsupported_request' });
   }
-  return browser.runtime.sendNativeMessage("dev.formfill.app.extension", {
-    version: 1,
-    type: message.type
-  });
+  const request = { version: 1, type: message.type };
+  if (message.type === 'analyzeForm') {
+    if (typeof message.requestID !== 'string' || message.requestID.length > 80 || !Array.isArray(message.fields) || message.fields.length > 40) {
+      return Promise.resolve({ version: 1, ok: false, error: 'invalid_request' });
+    }
+    request.requestID = message.requestID;
+    request.fields = message.fields.map(field => Object.fromEntries(
+      ['id', 'tag', 'type', 'label', 'ariaLabel', 'name', 'htmlID', 'placeholder', 'autocomplete', 'context', 'maxLength', 'pattern', 'occupied', 'options'].map(key => [key, field[key]])
+    ));
+  }
+  return browser.runtime.sendNativeMessage('dev.formfill.app.extension', request);
 });

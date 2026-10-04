@@ -7,7 +7,12 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         let response = NSExtensionItem()
         let message = item?.userInfo?[SFExtensionMessageKey]
 
-        if BridgeContract.requestType(from: message) == "modelProbe" {
+        if BridgeContract.requestType(from: message) == "analyzeForm" {
+            Task {
+                response.userInfo = [SFExtensionMessageKey: await FormClassifier.analyze(message)]
+                context.completeRequest(returningItems: [response], completionHandler: nil)
+            }
+        } else if BridgeContract.requestType(from: message) == "modelProbe" {
             Task {
                 response.userInfo = [SFExtensionMessageKey: await modelProbeResponse(to: message)]
                 context.completeRequest(returningItems: [response], completionHandler: nil)
