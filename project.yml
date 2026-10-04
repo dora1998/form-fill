@@ -1,0 +1,62 @@
+name: FormFill
+options:
+  bundleIdPrefix: dev.formfill
+  deploymentTarget:
+    iOS: '26.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    CODE_SIGN_STYLE: Automatic
+targets:
+  FormFill:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Form Fill
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.formfill.app
+        MARKETING_VERSION: '0.1.0'
+        CURRENT_PROJECT_VERSION: '1'
+    dependencies:
+      - target: FormFillExtension
+        embed: true
+  FormFillExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SafariExtension
+        excludes: [Resources]
+      - Shared
+      - path: SafariExtension/Resources
+        buildPhase: resources
+    info:
+      path: SafariExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Form Fill
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.Safari.web-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.formfill.app.extension
+        MARKETING_VERSION: '0.1.0'
+        CURRENT_PROJECT_VERSION: '1'
+        APPLICATION_EXTENSION_API_ONLY: YES
+    dependencies:
+      - sdk: SafariServices.framework
+schemes:
+  FormFill:
+    build:
+      targets:
+        FormFill: all
+    run:
+      config: Debug
