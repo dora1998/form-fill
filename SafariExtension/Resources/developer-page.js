@@ -71,5 +71,5 @@ globalThis.FormFillCaptureDeveloperPage = () => {
       'Cookies, browser storage, network bodies, JS heap, event listeners and pre-existing console logs are not collected.',
       'Cross-origin frames and closed shadow roots are inaccessible. Collection limits are reported per document.',
       'HTML contains site scripts. Inspect as text; do not run as a trusted page. Dynamic site behaviour requires the original site.',
-      'lastRun is the latest opted-in analysis in this top document, cleared by normal analysis or document reload; no disk storage.'] };
+      'lastRun is the latest opted-in analysis in this top document, cleared by normal analysis or document reload; no automatic disk storage; explicit exports are saved in the app.'] };
 };

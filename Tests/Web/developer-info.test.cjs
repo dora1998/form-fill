@@ -20,27 +20,61 @@ test('developer trace flag is opt-in and rejected from content scripts', async (
   assert.equal(requests.length, 3);
 });
 
-test('raw copy supports missing analysis, clipboard denial, capture failures and retained native traces', async () => {
-  for (const mode of ['success', 'manual', 'failed', 'no_analysis']) {
+test('saving sends full JSON to the app without clipboard access, including failed captures', async () => {
+  for (const mode of ['success', 'capture_failed', 'save_failed', 'transport_failed', 'too_large', 'no_analysis']) {
     const nodes = {};
-    let copied;
-    const context = { Date, navigator: { clipboard: { writeText: async value => { if (mode === 'manual') throw Error('denied'); copied = value; } } },
-      FormFillCaptureDeveloperPage() {},
-      document: { querySelector: selector => nodes[selector] ||= { addEventListener: (_, fn) => { nodes[selector].click = fn; }, focus() {}, select() {} } },
-      browser: { runtime: { getManifest: () => ({ version: '0.1.0' }) }, tabs: { query: async () => [{ id: 1, url: 'https://example.test/address?raw=query' }] },
+    let saved;
+    const raw = '住所・モデル応答'.repeat(100_000);
+    const context = { Date, FormFillCaptureDeveloperPage() {},
+      navigator: { clipboard: { writeText() { assert.fail('save must not use clipboard'); } } },
+      document: { querySelector: selector => nodes[selector] ||= { addEventListener: (_, fn) => nodes[selector].click = fn } },
+      browser: {
+        runtime: { getManifest: () => ({ version: '0.1.0' }), sendMessage: async message => {
+          saved = message;
+          if (mode === 'transport_failed') throw Error('transport');
+          return { version: 1, ok: !['save_failed', 'too_large'].includes(mode),
+            error: mode === 'too_large' ? 'report_too_large' : 'report_save_failed' };
+        } },
+        tabs: { query: async () => [{ id: 1, url: 'https://example.test/form?token=raw' }] },
         scripting: { executeScript: async () => {
-          if (mode === 'failed') throw Error('raw exception');
-          return [{ result: { version: 1, documents: [{ html: '<label>原文住所</label>', controls: [{ value: '原文値' }] }],
-            lastRun: mode === 'no_analysis' ? null : { analysis: { developerDiagnostics: { trace: ['raw prompt', 'raw output'] } } } } }];
-        } } } };
+          if (mode === 'capture_failed') throw Error('capture error');
+          return [{ result: { version: 1, documents: [{ html: raw }], lastRun: mode === 'no_analysis' ? null : { analysis: { prompt: raw } } } }];
+        } }
+      }
+    };
     vm.runInNewContext(resource('developer-ui.js'), context);
-    await nodes['#copy-developer'].click();
-    const report = JSON.parse(copied || nodes['#developer-output'].value);
-    assert.equal(report.currentPageURL, 'https://example.test/address?raw=query');
-    assert.equal(nodes['#copy-developer'].disabled, false);
-    if (mode === 'failed') assert.match(report.error, /raw exception/);
-    else assert.equal(report.page.documents[0].controls[0].value, '原文値');
-    if (mode === 'manual') assert.equal(nodes['#developer-output'].hidden, false);
-    if (mode === 'no_analysis') assert.match(nodes['#developer-status'].textContent, /記録はありません/);
+    await nodes['#save-developer'].click();
+    assert.equal(saved.type, 'saveDeveloperReport');
+    const report = JSON.parse(saved.report);
+    if (mode === 'capture_failed') assert.equal(report.captureStatus, 'failed');
+    else {
+      assert.equal(report.page.documents[0].html, raw);
+      if (mode === 'no_analysis') assert.match(nodes['#developer-status'].textContent, /記録はありません/);
+      else assert.equal(report.page.lastRun.analysis.prompt, raw);
+    }
+    assert.equal(nodes['#save-developer'].disabled, false);
+    assert.equal(nodes['#copy-developer'], undefined);
+    assert.equal(nodes['#developer-output'], undefined);
+    assert.match(nodes['#developer-status'].textContent, mode === 'save_failed' ? /保存できません/
+      : mode === 'transport_failed' ? /保存に失敗/ : mode === 'too_large' ? /20 MiB/ : /アプリに保存しました/);
   }
+});
+
+test('saved reports are accepted only from the extension and only the report is forwarded', async () => {
+  let listener;
+  const forwarded = [];
+  vm.runInNewContext(resource('background.js'), { browser: { runtime: {
+    id: 'extension', onMessage: { addListener: fn => listener = fn },
+    sendNativeMessage: async (_, request) => { forwarded.push(request); return { version: 1, ok: true }; }
+  } } });
+  const message = { type: 'saveDeveloperReport', report: '{"raw":"original"}', filename: '../../outside' };
+  await listener(message, { id: 'extension', tab: { id: 1 } });
+  await listener(message, { id: 'other' });
+  await listener({ type: 'saveDeveloperReport', report: {} }, { id: 'extension' });
+  assert.equal(forwarded.length, 0);
+  await listener(message, { id: 'extension' });
+  assert.deepEqual(JSON.parse(JSON.stringify(forwarded)), [{ version: 1, type: 'saveDeveloperReport', report: message.report }]);
+  const large = await listener({ type: 'saveDeveloperReport', report: 'x'.repeat(20 * 1024 * 1024 + 1) }, { id: 'extension' });
+  assert.equal(large.error, 'report_too_large');
+  assert.equal(forwarded.length, 1);
 });

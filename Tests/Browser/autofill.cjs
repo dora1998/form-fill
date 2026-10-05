@@ -139,9 +139,14 @@ const path = require('node:path');
       window.browser = {
         tabs: { query: async () => [{ id: 5, url: 'https://fixture.example/form' }], sendMessage: async (_, message) => sendToTarget(message) },
         scripting: { executeScript: async options => options.func ? [{ frameId: 0, result: options.func === window.FormFillCaptureDeveloperPage ? await captureDeveloper() : await captureTarget(options.args[0]) }] : [] },
-        runtime: { getManifest: () => ({ version: '0.1.0' }), sendMessage: async message => ({ version: 1, ok: true, requestID: message.requestID,
+        runtime: { getManifest: () => ({ version: '0.1.0' }), sendMessage: async message => {
+          if (message.type === 'saveDeveloperReport') {
+            window.savedDeveloperReport = message.report;
+            return { version: 1, ok: true };
+          }
+          return { version: 1, ok: true, requestID: message.requestID,
           developerDiagnostics: message.developerDiagnostics ? { trace: [{ message: 'raw prompt and output' }] } : undefined,
-          items: message.fields.map((field, i) => ({ id: field.id, label: field.label, value: values[i], displayValue: values[i], source: 'rule', overwritesExisting: field.occupied })), skipped: [] }) }
+          items: message.fields.map((field, i) => ({ id: field.id, label: field.label, value: values[i], displayValue: values[i], source: 'rule', overwritesExisting: field.occupied })), skipped: [] }; } }
       };
     }, values);
     await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/debug-info.js'), 'utf8') });
@@ -172,9 +177,11 @@ const path = require('node:path');
     await popup.locator('#fill').click();
     await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('9欄に入力しました'));
     assert.deepEqual(await page.locator('input:not([type]),select').evaluateAll(nodes => nodes.map(node => node.value)), values);
-    await popup.locator('#copy-developer').click();
-    await popup.waitForFunction(() => !document.querySelector('#copy-developer').disabled);
-    const rawPopupReport = JSON.parse(await popup.locator('#developer-output').inputValue());
+    await popup.locator('#save-developer').click();
+    await popup.waitForFunction(() => !document.querySelector('#save-developer').disabled);
+    const rawPopupReport = JSON.parse(await popup.evaluate(() => window.savedDeveloperReport));
+    assert.equal(await popup.locator('#copy-developer, #developer-output').count(), 0);
+    assert.match(await popup.locator('#developer-status').textContent(), /アプリに保存しました/);
     assert.equal(rawPopupReport.page.lastRun.analysis.response.developerDiagnostics.trace[0].message, 'raw prompt and output');
     assert.equal(rawPopupReport.page.lastRun.fill.after[0].value, '山田');
     assert.equal(rawPopupReport.page.lastRun.analysisPage.documents[0].controls[0].value, '元の姓');

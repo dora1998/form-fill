@@ -1,10 +1,7 @@
-const developerButton = document.querySelector('#copy-developer');
+const saveDeveloperButton = document.querySelector('#save-developer');
 const developerStatus = document.querySelector('#developer-status');
-const developerOutput = document.querySelector('#developer-output');
-developerButton.addEventListener('click', async () => {
-  developerButton.disabled = true;
-  developerOutput.hidden = true;
-  developerOutput.value = '';
+saveDeveloperButton.addEventListener('click', async () => {
+  saveDeveloperButton.disabled = true;
   developerStatus.textContent = '開発用データを収集中…';
   const report = { schemaVersion: 1, product: 'Form Fill developer diagnostics',
     extensionVersion: browser.runtime.getManifest().version, capturedAt: new Date().toISOString() };
@@ -24,18 +21,14 @@ developerButton.addEventListener('click', async () => {
     const output = JSON.stringify(report, null, 2);
     const note = report.captureStatus !== 'success' ? 'ページの取得に失敗した記録です。'
       : report.page.lastRun ? '解析・入力の直近記録を含みます。' : '詳細解析の記録はありません。現在のDOMのみ収録しました。';
-    // Populate the fallback before awaiting clipboard permission on Safari.
-    developerOutput.value = output;
-    try {
-      await navigator.clipboard.writeText(output);
-      developerStatus.textContent = `開発用データをコピーしました。${note}`;
-      developerOutput.value = '';
-    } catch {
-      developerOutput.hidden = false;
-      developerOutput.focus();
-      developerOutput.select();
-      developerStatus.textContent = `下の生データを選択してコピーしてください。${note}`;
+    const result = await browser.runtime.sendMessage({ type: 'saveDeveloperReport', report: output });
+    if (result?.version !== 1 || result.ok !== true) {
+      developerStatus.textContent = result?.error === 'report_too_large'
+        ? 'データが20 MiBを超えるため保存できませんでした。入力欄の少ないページで再試行してください。'
+        : 'アプリに保存できませんでした。アプリと拡張のApp Groups設定・端末の空き容量を確認して再試行してください。';
+      return;
     }
-  } catch { developerStatus.textContent = '開発用データを作成できませんでした。'; }
-  finally { developerButton.disabled = false; }
+    developerStatus.textContent = `アプリに保存しました。Form Fillアプリの「保存したデバッグログ」からファイルに保存・共有・削除できます。${note}`;
+  } catch { developerStatus.textContent = '開発用データの作成・アプリへの保存に失敗しました。再試行してください。'; }
+  finally { saveDeveloperButton.disabled = false; }
 });

@@ -7,7 +7,10 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         let response = NSExtensionItem()
         let message = item?.userInfo?[SFExtensionMessageKey]
 
-        if BridgeContract.requestType(from: message) == "analyzeForm" {
+        if BridgeContract.requestType(from: message) == "saveDeveloperReport" {
+            response.userInfo = [SFExtensionMessageKey: saveDeveloperReport(message)]
+            context.completeRequest(returningItems: [response], completionHandler: nil)
+        } else if BridgeContract.requestType(from: message) == "analyzeForm" {
             Task {
                 response.userInfo = [SFExtensionMessageKey: await FormClassifier.analyze(message)]
                 context.completeRequest(returningItems: [response], completionHandler: nil)
@@ -20,6 +23,21 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         } else {
             response.userInfo = [SFExtensionMessageKey: BridgeContract.response(to: message)]
             context.completeRequest(returningItems: [response], completionHandler: nil)
+        }
+    }
+
+    private func saveDeveloperReport(_ message: Any?) -> [String: Any] {
+        guard let request = message as? [String: Any], request["version"] as? Int == BridgeContract.version,
+              let json = request["report"] as? String else {
+            return ["version": 1, "ok": false, "error": "invalid_request"]
+        }
+        do {
+            let url = try DebugReportStore.shared().save(json)
+            return ["version": 1, "ok": true, "filename": url.lastPathComponent]
+        } catch DebugReportStore.StoreError.tooLarge {
+            return ["version": 1, "ok": false, "error": "report_too_large"]
+        } catch {
+            return ["version": 1, "ok": false, "error": "report_save_failed"]
         }
     }
 

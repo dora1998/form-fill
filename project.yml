@@ -14,6 +14,7 @@ targets:
     platform: iOS
     sources:
       - App
+      - Shared/DebugReportStore.swift
     info:
       path: App/Info.plist
       properties:
@@ -30,6 +31,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.formfill.app
         MARKETING_VERSION: '0.1.0'
         CURRENT_PROJECT_VERSION: '1'
+    entitlements:
+      path: App/FormFill.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.formfill.app]
     dependencies:
       - target: FormFillExtension
         embed: true
@@ -58,6 +63,10 @@ targets:
         MARKETING_VERSION: '0.1.0'
         CURRENT_PROJECT_VERSION: '1'
         APPLICATION_EXTENSION_API_ONLY: YES
+    entitlements:
+      path: SafariExtension/FormFillExtension.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.formfill.app]
     dependencies:
       - sdk: SafariServices.framework
 schemes:

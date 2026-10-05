@@ -17,6 +17,9 @@ struct ContentView: View {
                     Text("固定の架空プロフィールを使い、ルールと端末内モデルで姓名・住所を分類して入力します。プロフィール保存は未実装です。")
                     Text("山田 太郎 / 100-0001 東京都千代田区千代田1-1 テストマンション101号室。入力先サイトへダミー値が渡ります。")
                 }
+                Section("開発用") {
+                    NavigationLink("保存したデバッグログ") { DebugReportsView() }
+                }
             }
             .navigationTitle("Form Fill")
         }

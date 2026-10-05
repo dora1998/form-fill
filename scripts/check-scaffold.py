@@ -13,6 +13,9 @@ with (root / "SafariExtension/Info.plist").open("rb") as stream:
     extension = plistlib.load(stream)["NSExtension"]
 assert extension["NSExtensionPointIdentifier"] == "com.apple.Safari.web-extension"
 resources = root / "SafariExtension/Resources"
+for relative in ["App/FormFill.entitlements", "SafariExtension/FormFillExtension.entitlements"]:
+    with (root / relative).open("rb") as stream:
+        assert plistlib.load(stream)["com.apple.security.application-groups"] == ["group.dev.formfill.app"]
 manifest = json.loads((resources / "manifest.json").read_text())
 assert manifest["manifest_version"] == 3
 assert set(manifest["permissions"]) == {"activeTab", "scripting", "nativeMessaging", "clipboardWrite"}

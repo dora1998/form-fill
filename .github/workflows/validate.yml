@@ -24,6 +24,7 @@ jobs:
           xcode-version: '26.0'
       - run: brew install xcodegen
       - run: swiftc Shared/FillPlan.swift Tests/Native/main.swift -o /tmp/fill-planner-tests && /tmp/fill-planner-tests
+      - run: swiftc Shared/DebugReportStore.swift Tests/Native/debug-report-store.swift -o /tmp/debug-report-tests && /tmp/debug-report-tests
       - run: xcodegen generate
       - run: git diff --exit-code -- App/Info.plist SafariExtension/Info.plist
       - run: >-

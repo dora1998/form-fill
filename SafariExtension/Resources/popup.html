@@ -26,12 +26,12 @@
   <textarea id="debug-output" aria-label="手動コピー用デバッグ情報" readonly hidden></textarea>
   <details>
     <summary>開発用の詳細情報</summary>
-    <p>DOM・URL全文・ラベル・選択肢・入力値・モデルの指示と応答・入力前後の記録を原文でコピーします。個人情報やページ内の認証トークンが含まれ得ます。共有前に内容を確認してください。</p>
+    <p>DOM・URL全文・ラベル・選択肢・入力値・モデルの指示と応答・入力前後の記録を原文で保存します。個人情報やページ内の認証トークンが含まれ得ます。共有前に内容を確認してください。</p>
     <label><input id="developer-record" type="checkbox">次の解析で詳細を記録する</label>
-    <p>チェックして「このページを解析」から試してください。直近の記録はこのページを再読み込みするまで残ります。チェックなしの再解析で消去します。未記録でも現在のDOMをコピーできます。</p>
-    <button id="copy-developer" type="button">開発用の生データをコピー</button>
+    <p>チェックして「このページを解析」から試してください。直近の記録はこのページを再読み込みするまで残ります。チェックなしの再解析で消去します。未記録でも現在のDOMを保存できます。</p>
+    <button id="save-developer" type="button">開発用データをアプリに保存</button>
+    <p>詳細情報をJSONファイルで端末内に保存します。Form Fillアプリの「保存したデバッグログ」からファイルに保存・共有・削除できます。1件20 MiBまで。保存した記録はページを閉じても残ります。</p>
     <p id="developer-status" role="status" aria-live="polite"></p>
-    <textarea id="developer-output" aria-label="手動コピー用開発データ" readonly hidden></textarea>
   </details>
   <script src="developer-page.js"></script>
   <script src="debug-info.js"></script>
