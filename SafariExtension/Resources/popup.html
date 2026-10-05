@@ -24,8 +24,19 @@
   <p>ページURL・欄の構造・入力例の意味の手がかり・直近の解析結果をコピーします。URLのクエリ・フラグメント・認証情報・任意のパス識別子を除きます。入力値・ラベルや入力例の原文・選択肢・ページ本文は含みません。</p>
   <p id="debug-status" role="status" aria-live="polite"></p>
   <textarea id="debug-output" aria-label="手動コピー用デバッグ情報" readonly hidden></textarea>
+  <details>
+    <summary>開発用の詳細情報</summary>
+    <p>DOM・URL全文・ラベル・選択肢・入力値・モデルの指示と応答・入力前後の記録を原文でコピーします。個人情報やページ内の認証トークンが含まれ得ます。共有前に内容を確認してください。</p>
+    <label><input id="developer-record" type="checkbox">次の解析で詳細を記録する</label>
+    <p>チェックして「このページを解析」から試してください。直近の記録はこのページを再読み込みするまで残ります。チェックなしの再解析で消去します。未記録でも現在のDOMをコピーできます。</p>
+    <button id="copy-developer" type="button">開発用の生データをコピー</button>
+    <p id="developer-status" role="status" aria-live="polite"></p>
+    <textarea id="developer-output" aria-label="手動コピー用開発データ" readonly hidden></textarea>
+  </details>
+  <script src="developer-page.js"></script>
   <script src="debug-info.js"></script>
   <script src="debug-page.js"></script>
   <script src="popup.js"></script>
+  <script src="developer-ui.js"></script>
 </body>
 </html>

@@ -82,17 +82,32 @@ analyzeButton.addEventListener('click', async () => {
   fillButton.disabled = true;
   analyzeButton.disabled = true;
   fillStatus.textContent = '入力欄を解析中…';
+  const detailed = document.querySelector('#developer-record')?.checked === true;
+  let developerTabID;
+  const saveDeveloper = async (analysis, page) => {
+    if (!detailed || !developerTabID || !debugRequestID) return;
+    try { await browser.tabs.sendMessage(developerTabID, { type: 'saveDeveloperAnalysis', requestID: debugRequestID, analysis, page }); }
+    catch { /* A diagnostic write must not interrupt classification or filling. */ }
+  };
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('no_tab');
+    developerTabID = tab.id;
     debugAnalysisURL = FormFillDebug.pageURL(tab.url).url;
     await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-    const extracted = await browser.tabs.sendMessage(tab.id, { type: 'extract' });
+    const extracted = await browser.tabs.sendMessage(tab.id, { type: 'extract', developerDiagnostics: detailed });
     if (extracted?.version !== 1 || !Array.isArray(extracted.fields)) throw new Error('invalid_response');
     debugRequestID = extracted.requestID;
+    if (detailed) {
+      try {
+        const captures = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: FormFillCaptureDeveloperPage });
+        await saveDeveloper({ status: 'running' }, captures?.[0]?.result);
+      } catch (error) { await saveDeveloper({ status: 'running', captureError: String(error) }); }
+    }
     debugFields = FormFillDebug.fieldMetadata(extracted.fields);
-    if (!extracted.fields.length) { lastAnalysis = FormFillDebug.analysis('no_fields'); fillStatus.textContent = '対象の入力欄がありません。通常のinput・select・textareaが対象です。'; return; }
-    const result = await withTimeout(browser.runtime.sendMessage({ type: 'analyzeForm', requestID: extracted.requestID, fields: extracted.fields }));
+    if (!extracted.fields.length) { await saveDeveloper({ status: 'no_fields', extracted }); lastAnalysis = FormFillDebug.analysis('no_fields'); fillStatus.textContent = '対象の入力欄がありません。通常のinput・select・textareaが対象です。'; return; }
+    const result = await withTimeout(browser.runtime.sendMessage({ type: 'analyzeForm', requestID: extracted.requestID, fields: extracted.fields, developerDiagnostics: detailed }));
+    await saveDeveloper({ status: 'completed', extracted, response: result });
     if (result?.error === 'model_unavailable') { lastAnalysis = FormFillDebug.analysis('model_unavailable', result); fillStatus.textContent = unavailableReasons[result.reason] ?? unavailableReasons.unknown; return; }
     if (result?.version !== 1 || result.ok !== true || result.requestID !== extracted.requestID || !Array.isArray(result.items) || !Array.isArray(result.skipped)) throw new Error('analysis_failed');
     lastAnalysis = FormFillDebug.analysis('success', result);
@@ -104,6 +119,7 @@ analyzeButton.addEventListener('click', async () => {
     fillButton.disabled = result.items.length === 0;
     fillStatus.textContent = `${result.items.length}欄を入力予定、${result.skipped.length}欄を保留。${result.modelFailed ? 'モデル処理の一部に失敗しました。確実に判定した欄のみ表示します。' : ''}${extracted.truncated ? '先頭40欄のみ解析しました。' : ''}`;
   } catch (error) {
+    try { await saveDeveloper({ status: error.message === 'timeout' ? 'timeout' : 'failed', error: String(error?.stack || error) }); } catch {}
     lastAnalysis = FormFillDebug.analysis(error.message === 'timeout' ? 'timeout' : 'failed');
     fillStatus.textContent = error.message === 'timeout' ? '解析が時間内に完了しませんでした。項目が少ないページで再試行してください。'
       : '解析できませんでした。Safariでこのサイトへの拡張のアクセスを許可し、再試行してください。';

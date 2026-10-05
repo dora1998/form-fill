@@ -46,7 +46,7 @@ test('debug extraction never reads values or option contents, including excluded
   context.document.querySelectorAll = () => { throw Error(secret); };
   const failed = plain(capture());
   assert.equal(failed.collectorError, 'query_controls');
-  assert.equal(failed.collectorVersion, 3);
+  assert.equal(failed.collectorVersion, 4);
   assert.equal(JSON.stringify(failed).includes(secret), false);
 
 });

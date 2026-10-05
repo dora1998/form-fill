@@ -111,4 +111,13 @@ let separateRegion = [field("都道府県", id: "f0")] + numbered
 assert(FillPlanner.numberedAddressDefaults(fields: separateRegion, kinds: ["f0": .prefecture]).isEmpty)
 assert(FillPlanner.numberedAddressDefaults(fields: numbered, kinds: ["f2": .street]).isEmpty)
 assert(FillPlanner.overlappingAddressGroups(fields: numbered, kinds: defaults).isEmpty)
+
+// Semantic headings support tel postal inputs with opaque identifiers.
+let semanticPostal = field("郵便番号", length: 7, name: "code", type: "tel")
+invalid = valid; invalid["fields"] = try! JSONSerialization.jsonObject(with: JSONEncoder().encode([semanticPostal]))
+assert(FillPlanner.decode(invalid) != nil)
+assert(FillPlanner.rule(for: semanticPostal) == .postal)
+assert(value(semanticPostal, .postal) == "1000001")
+assert(FillPlanner.rule(for: field("番地", placeholder: "例）4-9")) == .street)
+assert(FillPlanner.rule(for: field("方書・マンション名", placeholder: "例）テストハイツ510号室")) == .building)
 print("Native fill planner: all checks passed")

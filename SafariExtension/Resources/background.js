@@ -9,6 +9,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
       return Promise.resolve({ version: 1, ok: false, error: 'invalid_request' });
     }
     request.requestID = message.requestID;
+    if (message.developerDiagnostics === true) request.developerDiagnostics = true;
     request.fields = message.fields.map(field => Object.fromEntries(
       ['id', 'tag', 'type', 'label', 'ariaLabel', 'name', 'htmlID', 'placeholder', 'autocomplete', 'context', 'maxLength', 'pattern', 'occupied', 'options'].map(key => [key, field[key]])
     ));

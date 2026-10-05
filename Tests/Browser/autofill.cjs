@@ -8,6 +8,7 @@ const path = require('node:path');
   try {
     const page = await browser.newPage();
     const source = fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/content.js'), 'utf8');
+    const developerSource = fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/developer-page.js'), 'utf8');
     const captureSource = fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/debug-page.js'), 'utf8');
     async function load(html) {
       await page.goto('about:blank');
@@ -17,6 +18,7 @@ const path = require('node:path');
       });
       await page.addScriptTag({ content: source });
       await page.addScriptTag({ content: captureSource });
+      await page.addScriptTag({ content: developerSource });
     }
     const send = message => message.type === 'debugInfo'
       ? page.evaluate(requestID => FormFillCapturePage(requestID), message.requestID ?? null)
@@ -44,6 +46,26 @@ const path = require('node:path');
     extracted = await send({ type: 'extract' });
     assert.equal((await send({ type: 'applyFill', requestID: extracted.requestID, items: [{ id: 'f0', kind: 'fullAddress', value: '東京都千代田区千代田1-1' }] })).results[0].status, 'filled');
     assert.equal(await page.locator('textarea').inputValue(), '東京都千代田区千代田1-1');
+
+    // Sanitized reproduction of stacked rows and watermark labels. Opaque IDs
+    // ensure detection comes from the visible heading, not site-specific names.
+    await load(fs.readFileSync(path.join(__dirname, '../../Fixtures/watermark-address.html'), 'utf8'));
+    extracted = await send({ type: 'extract' });
+    assert.deepEqual(extracted.fields.map(field => field.label), ['郵便番号', '検索結果が一覧表示されます。該当する住所を選択して下さい', '番地', '方書・マンション名', 'ニックネーム']);
+    assert.equal(extracted.fields[0].type, 'tel');
+    assert.equal(extracted.fields[2].placeholder, '例）4-9');
+    assert.equal(extracted.fields[3].placeholder, '例）テストハイツ510号室');
+    let diagnostics = await send({ type: 'debugInfo', requestID: extracted.requestID });
+    assert.equal(diagnostics.eligibleCount, 5);
+    assert.equal(diagnostics.analysisMatchesPage, true);
+    const watermarkFill = await send({ type: 'applyFill', requestID: extracted.requestID, items: [
+      { id: 'f0', value: '1000001' }, { id: 'f2', value: '1-1' }, { id: 'f3', value: 'テストマンション101号室' }
+    ] });
+    assert.deepEqual(watermarkFill.results.map(item => item.status), ['filled', 'filled', 'filled']);
+    assert.equal(await page.locator('#contact').inputValue(), '');
+    assert.equal(await page.evaluate(() => window.submissions || 0), 0);
+    await load('<p>番地</p><label for="explicit">建物名</label><input id="explicit">');
+    assert.equal((await send({ type: 'extract' })).fields[0].label, '建物名');
 
     const defaultPrefecture = '<label>都道府県<select><option value="13">東京都</option><option selected value="14">神奈川県</option></select></label>';
     await load(defaultPrefecture);
@@ -111,18 +133,24 @@ const path = require('node:path');
     const popup = await browser.newPage();
     await popup.setContent(fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/popup.html'), 'utf8').replace(/<script.*?<\/script>/gs, ''));
     await popup.exposeFunction('sendToTarget', send);
+    await popup.exposeFunction('captureDeveloper', () => page.evaluate(() => FormFillCaptureDeveloperPage()));
     await popup.exposeFunction('captureTarget', requestID => send({ type: 'debugInfo', requestID }));
     await popup.evaluate(values => {
       window.browser = {
         tabs: { query: async () => [{ id: 5, url: 'https://fixture.example/form' }], sendMessage: async (_, message) => sendToTarget(message) },
-        scripting: { executeScript: async options => options.func ? [{ frameId: 0, result: await captureTarget(options.args[0]) }] : [] },
+        scripting: { executeScript: async options => options.func ? [{ frameId: 0, result: options.func === window.FormFillCaptureDeveloperPage ? await captureDeveloper() : await captureTarget(options.args[0]) }] : [] },
         runtime: { getManifest: () => ({ version: '0.1.0' }), sendMessage: async message => ({ version: 1, ok: true, requestID: message.requestID,
+          developerDiagnostics: message.developerDiagnostics ? { trace: [{ message: 'raw prompt and output' }] } : undefined,
           items: message.fields.map((field, i) => ({ id: field.id, label: field.label, value: values[i], displayValue: values[i], source: 'rule', overwritesExisting: field.occupied })), skipped: [] }) }
       };
     }, values);
     await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/debug-info.js'), 'utf8') });
     await popup.addScriptTag({ content: captureSource });
+    await popup.addScriptTag({ content: developerSource });
     await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/popup.js'), 'utf8') });
+    await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/developer-ui.js'), 'utf8') });
+    await popup.locator('summary').click();
+    await popup.locator('#developer-record').check();
     await popup.locator('#analyze').click();
     await popup.locator('#fill:not([disabled])').waitFor();
     assert.equal(await popup.locator('#plan li').count(), 9);
@@ -144,7 +172,14 @@ const path = require('node:path');
     await popup.locator('#fill').click();
     await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('9欄に入力しました'));
     assert.deepEqual(await page.locator('input:not([type]),select').evaluateAll(nodes => nodes.map(node => node.value)), values);
+    await popup.locator('#copy-developer').click();
+    await popup.waitForFunction(() => !document.querySelector('#copy-developer').disabled);
+    const rawPopupReport = JSON.parse(await popup.locator('#developer-output').inputValue());
+    assert.equal(rawPopupReport.page.lastRun.analysis.response.developerDiagnostics.trace[0].message, 'raw prompt and output');
+    assert.equal(rawPopupReport.page.lastRun.fill.after[0].value, '山田');
+    assert.equal(rawPopupReport.page.lastRun.analysisPage.documents[0].controls[0].value, '元の姓');
     await popup.close();
+    assert.equal((await page.evaluate(() => FormFillCaptureDeveloperPage())).lastRun.fill.after[0].value, '山田');
     // Secrets can occur in any DOM string, including labels and option metadata.
     const secret = 'PRIVATE-person-address-token';
     await load(`<label>${secret}<input id="${secret}" name="${secret}" value="${secret}" placeholder="${secret}" aria-label="${secret}" pattern="${secret}" autocomplete="section-${secret} name"></label>
@@ -157,6 +192,46 @@ const path = require('node:path');
     assert.equal(debug.iframeCount, 1);
     assert.equal(debug.fields[2].optionCount, 1);
     assert.equal(await page.locator('textarea').inputValue(), secret);
+    // Raw development export retains original text/live values, while the safe
+    // report above still excludes them. A reopened popup reads the page record.
+    let raw = await page.evaluate(() => FormFillCaptureDeveloperPage());
+    assert.ok(raw.documents[0].html.includes(secret));
+    assert.equal(raw.documents[0].controls[1].value, secret);
+    assert.equal(raw.lastRun, null);
+    assert.ok(raw.documents.some(doc => doc.path.includes('/frame')));
+    await load('<label>住所<input value="元の住所"></label><input id="other"><script>document.querySelector("input").addEventListener("input",()=>{document.querySelector("#other").value="サイト補完"})</script>');
+    extracted = await send({ type: 'extract', developerDiagnostics: true });
+    raw = await page.evaluate(() => FormFillCaptureDeveloperPage());
+    assert.equal(raw.lastRun.fields[0].initialValue, '元の住所');
+    assert.equal(raw.documents[0].controls[0].fieldID, 'f0');
+    const nativeResponse = { ok: true, developerDiagnostics: { trace: [{ message: 'prompt_raw=住所の原文' }] } };
+    assert.equal((await send({ type: 'saveDeveloperAnalysis', requestID: 'wrong', analysis: nativeResponse })).ok, false);
+    await send({ type: 'saveDeveloperAnalysis', requestID: extracted.requestID, analysis: { response: nativeResponse }, page: raw });
+    await send({ type: 'applyFill', requestID: extracted.requestID, items: [{ id: 'f0', value: '東京都' }, { id: 'f1', value: '番地' }] });
+    await page.addScriptTag({ content: source }); // Reopening/injecting retains the run.
+    raw = await page.evaluate(() => FormFillCaptureDeveloperPage());
+    assert.equal(raw.lastRun.analysis.response.developerDiagnostics.trace[0].message, 'prompt_raw=住所の原文');
+    assert.equal(raw.lastRun.analysisPage.documents[0].controls[0].value, '元の住所');
+    assert.equal(raw.lastRun.fill.before[0].value, '元の住所');
+    assert.equal(raw.lastRun.fill.after[0].value, '東京都');
+    assert.equal(raw.documents[0].controls[0].fieldID, 'f0');
+    assert.equal(raw.lastRun.fill.after[1].value, 'サイト補完');
+    assert.equal(raw.lastRun.fill.response.results[1].status, 'changed_by_page');
+    assert.equal(raw.lastRun.fill.events.find(event => event.stage === 'after_input_event').values[1].value, 'サイト補完');
+    await send({ type: 'extract' });
+    assert.equal((await page.evaluate(() => FormFillCaptureDeveloperPage())).lastRun, null);
+    await page.evaluate(async () => {
+      const host = document.createElement('div'); document.body.append(host);
+      host.attachShadow({mode:'open'}).innerHTML = '<label>影の住所<input value="影の値"></label>';
+      const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.srcdoc = '<input>';
+      await new Promise(resolve => { frame.onload = resolve; document.body.append(frame); });
+      document.body.append(...Array.from({length: 1005}, () => document.createElement('input')));
+    });
+    raw = await page.evaluate(() => FormFillCaptureDeveloperPage());
+    assert.ok(raw.documents.some(doc => doc.path.includes('/shadow') && doc.controls[0].value === '影の値'));
+    assert.ok(raw.unavailable.some(frame => frame.reason === 'cross_origin_or_unloaded'));
+    assert.ok(raw.documents[0].truncated.includes('controls'));
+    assert.ok(raw.documents.reduce((n, doc) => n + doc.controls.length, 0) <= raw.limits.controls);
     await load(fs.readFileSync(path.join(__dirname, '../../Fixtures/numbered-address.html'), 'utf8'));
     extracted = await send({ type: 'extract' });
     assert.equal(extracted.fields.length, 4);
