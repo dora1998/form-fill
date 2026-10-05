@@ -1,6 +1,20 @@
 {
   "name": "form-fill-extension-checks",
   "private": true,
-  "scripts": { "test": "node --test --test-isolation=none Tests/Web/*.test.cjs", "check": "python3 scripts/check-scaffold.py" },
-  "engines": { "node": ">=24" }
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "build": "node scripts/build-extension.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm build && node --test --test-isolation=none Tests/Web/*.test.cjs",
+    "test:browser": "pnpm build && node Tests/Browser/autofill.cjs",
+    "check": "pnpm typecheck && python3 scripts/check-scaffold.py"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.11",
+    "typescript": "5.9.3",
+    "playwright": "1.56.1"
+  },
+  "engines": {
+    "node": ">=24"
+  }
 }

@@ -1,10 +1,34 @@
 {
   "manifest_version": 3,
   "name": "Form Fill",
-  "description": "固定のダミー姓名・住所でSafariの自動入力を検証します。",
+  "description": "日本の姓名・住所を入力欄に合わせて補完します。現在は架空のプロフィールでお試しいただけます。",
   "version": "0.1.0",
-  "permissions": ["activeTab", "scripting", "nativeMessaging", "clipboardWrite"],
-  "background": { "scripts": ["background.js"], "persistent": false },
-  "action": { "default_popup": "popup.html", "default_title": "Form Fill" },
-  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'" }
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "nativeMessaging",
+    "clipboardWrite"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": false
+  },
+  "icons": {
+    "48": "icon-48.png",
+    "96": "icon-96.png",
+    "128": "icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Form Fill",
+    "default_icon": {
+      "32": "icon-32.png",
+      "64": "icon-64.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  }
 }

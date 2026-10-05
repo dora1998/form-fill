@@ -2,10 +2,13 @@
 <html lang="ja">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="popup.css"><title>Form Fill</title></head>
 <body>
-  <h1>Form Fill</h1>
-  <p>固定の架空プロフィールでフォーム入力を試せます。</p>
-  <p>山田 太郎 / ヤマダ タロウ<br>100-0001 東京都千代田区千代田1-1<br>テストマンション101号室</p>
-  <p>入力すると、このサイトにダミー値が渡り、プレビューに表示した欄の既存値も上書きします。フォームの送信は行いません。</p>
+  <header><h1>Form Fill</h1><span class="badge">お試し</span></header>
+  <p class="intro">姓名・住所を、入力欄に合わせて。</p>
+  <section class="profile" aria-label="入力するプロフィール">
+    <strong>山田 太郎</strong><span>ヤマダ タロウ</span>
+    <p>100-0001 東京都千代田区千代田1-1<br>テストマンション101号室</p>
+  </section>
+  <p class="note">入力内容を確認してから実行できます。表示した欄の既存値は上書きされます。フォームは送信しません。</p>
   <button id="analyze" type="button">このページを解析</button>
   <p id="fill-status" role="status" aria-live="polite"></p>
   <section id="preview" hidden>
@@ -14,7 +17,8 @@
     <ul id="skipped"></ul>
     <button id="fill" type="button" disabled>ダミー情報を入力する</button>
   </section>
-  <hr>
+  <details>
+    <summary>診断・開発用ツール</summary>
   <button id="check" type="button">このページで疎通を確認</button>
   <p id="status" role="status" aria-live="polite">疎通確認では入力値の読み取り・自動入力は行いません。</p>
   <button id="check-model" type="button">拡張からローカルモデルを確認</button>
@@ -24,8 +28,7 @@
   <p>ページURL・欄の構造・入力例の意味の手がかり・直近の解析結果をコピーします。URLのクエリ・フラグメント・認証情報・任意のパス識別子を除きます。入力値・ラベルや入力例の原文・選択肢・ページ本文は含みません。</p>
   <p id="debug-status" role="status" aria-live="polite"></p>
   <textarea id="debug-output" aria-label="手動コピー用デバッグ情報" readonly hidden></textarea>
-  <details>
-    <summary>開発用の詳細情報</summary>
+  <h2>開発用の詳細情報</h2>
     <p>DOM・URL全文・ラベル・選択肢・入力値・モデルの指示と応答・入力前後の記録を原文で保存します。個人情報やページ内の認証トークンが含まれ得ます。共有前に内容を確認してください。</p>
     <label><input id="developer-record" type="checkbox">次の解析で詳細を記録する</label>
     <p>チェックして「このページを解析」から試してください。直近の記録はこのページを再読み込みするまで残ります。チェックなしの再解析で消去します。未記録でも現在のDOMを保存できます。</p>

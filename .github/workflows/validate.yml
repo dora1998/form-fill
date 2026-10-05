@@ -1,4 +1,4 @@
-name: Validate scaffold
+name: Validate Form Fill
 on:
   push:
   pull_request:
@@ -7,14 +7,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: pnpm
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - run: npm test
-      - run: npm run check
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm check
+      - run: pnpm exec playwright install --with-deps webkit
+      - run: pnpm test:browser
   ios:
     runs-on: macos-15
     steps:
@@ -22,6 +27,13 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '26.0'
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: brew install xcodegen
       - run: swiftc Shared/FillPlan.swift Tests/Native/main.swift -o /tmp/fill-planner-tests && /tmp/fill-planner-tests
       - run: swiftc Shared/DebugReportStore.swift Tests/Native/debug-report-store.swift -o /tmp/debug-report-tests && /tmp/debug-report-tests
@@ -30,4 +42,5 @@ jobs:
       - run: >-
           xcodebuild -project FormFill.xcodeproj -scheme FormFill
           -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO build
+          -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - run: python3 scripts/check-scaffold.py build/Build/Products/Debug-iphonesimulator/FormFill.app/PlugIns/FormFillExtension.appex
