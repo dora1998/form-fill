@@ -2,7 +2,7 @@
 
 日本の姓名・住所を入力欄に合わせて自動入力する、iOSアプリ＋Safari Web Extensionの開発リポジトリです。フォームの意味をオンデバイスLLMで分類し、登録情報をローカルで組み立てる設計を検討しています。
 
-現在は **固定のダミープロフィールによる自動入力プロトタイプ** です。Safariで入力欄を抽出し、明確な欄はルール、曖昧な欄はFoundation Modelsで分類します。入力予定値を確認してから入力できます。プロフィール保存は未実装で、実機での分類精度はこれから検証します。
+現在は **固定のダミープロフィールによる自動入力プロトタイプ** です。アプリの「設定」で固定プロフィールを確認できます。Safariのポップアップからページを解析し、明確な欄はルール、曖昧な欄はFoundation Modelsで分類します。入力予定値を確認してから入力できます。プロフィール保存は未実装で、実機での分類精度はこれから検証します。
 
 ダミー値: 山田 太郎 / ヤマダ タロウ / 100-0001 / 東京都千代田区千代田1-1 / テストマンション101号室。モデルにはフォームのメタデータだけを送り、姓名・住所の値はコードで合成します。プレビューに表示した姓名・住所欄は既存の入力値も上書きします。自動送信は行いません。
 
@@ -20,13 +20,17 @@ Xcode 26以降と[XcodeGen](https://github.com/yonaskolb/XcodeGen)を用意し�
 
 ```sh
 brew install xcodegen
+pnpm install --frozen-lockfile
+pnpm build
 xcodegen generate
 open FormFill.xcodeproj
 ```
 
+生成JavaScript（`SafariExtension/Resources/*.js`）はGit管理しません。初回は上記の順序で生成してからXcodeプロジェクトを作り、TypeScript変更後は `pnpm build` を実行してください。
+
 `project.yml` が構成の正本です。生成した `.xcodeproj` はコミットせず、構成変更は `project.yml` に反映します。Info.plistは生成結果も追跡し、再生成で差分が出ないよう、設定と生成結果を一緒に更新します。
 
-`FormFill` schemeを選び、両ターゲットのSigning & Capabilitiesで自分のTeamを指定してください。実機用Bundle IDは `project.yml` のアプリ・拡張を同じ接頭辞で固有のものへ変更します。拡張のIDを変更した場合は `background.js` のnative message送信先と関連テストも合わせて変更します。
+`FormFill` schemeを選び、両ターゲットのSigning & Capabilitiesで自分のTeamを指定してください。実機用Bundle IDは `project.yml` のアプリ・拡張を同じ接頭辞で固有のものへ変更します。拡張のIDを変更した場合は `SafariExtension/Source/background.ts` のnative message送信先と関連テストも合わせて変更します。
 
 ```sh
 xcodebuild -project FormFill.xcodeproj -scheme FormFill \
@@ -34,7 +38,7 @@ xcodebuild -project FormFill.xcodeproj -scheme FormFill \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-実機へアプリをインストールし、Safariの機能拡張でForm Fillを有効化してください。フォームのあるページで拡張を開き「このページを解析」→プレビュー確認→「ダミー情報を入力する」を選びます。Apple Intelligenceが未準備・利用不能の場合は理由を表示します。疎通・モデル診断ボタンも残しています。
+実機へアプリをインストールし、Safariの機能拡張でForm Fillを有効化してください。利用するサイトへのアクセスをSafariで許可します。フォームのあるページで拡張を開き「このページを解析」→プレビュー確認→「ダミー情報を入力する」を選びます。Apple Intelligenceが未準備・利用不能の場合は理由を表示します。疎通・モデル診断ボタンも残しています。
 
 認識がうまくいかないページでは、解析後に「デバッグ情報をコピー」を押すと、対象URL・診断の要約・欄の構造・直近の分類と保留理由・コードの説明をJSONでコピーできます。URLはクエリ・フラグメント・認証情報を除き、一般的な経路名以外のパス要素を伏せます。入力値、ラベル・選択肢の原文、ページ本文は含めません。自動コピーできない環境では手動コピー用の欄を表示します。詳細は[開発手順](docs/development.md)を参照してください。
 
@@ -50,11 +54,11 @@ Safariの拡張ポップアップで「拡張からローカルモデルを確�
 
 ## ローカル検証
 
-Node.js 24以降、Python 3を使用します。npmパッケージのインストールは不要です。
+Node.js 24以降、pnpm 11.19.0、Python 3を使用します。依存関係は `pnpm install --frozen-lockfile` で取得します。`pnpm-workspace.yaml` の `minimumReleaseAge: 4320` で公開後3日未満の依存バージョンを除外します。
 
 ```sh
-npm test
-npm run check
+pnpm test
+pnpm check
 ```
 
 JavaScriptテストはブラウザーAPIとDOMのモックを使って、native message、安全な入力欄カウント、ポップアップの成功・失敗を検証します。Swiftの値合成テストと実DOMのWebKitテストは[開発手順](docs/development.md)を参照してください。静的チェックはplistとmanifestの整合性、権限、リソース参照を検証します。これらはiOSビルド・Safari実機動作・LLM精度の検証を代替しません。
@@ -68,7 +72,8 @@ App/                        SwiftUIアプリ
 SafariExtension/            ネイティブハンドラーと拡張リソース
 Shared/                     メッセージ検証・固定プロフィール・値合成
 Fixtures/                   実機確認用の合成フォーム
-Tests/Web/                  拡張のJavaScriptテスト
+SafariExtension/Source/     拡張のTypeScriptソース（責務別モジュール）
+Tests/Web/                  拡張のTypeScript成果物テスト
 docs/                       仕様、設計、開発手順
 project.yml                 XcodeGenプロジェクト定義
 ```

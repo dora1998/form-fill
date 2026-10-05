@@ -5,3 +5,9 @@ build/
 xcuserdata/
 .env
 FormFill.xcodeproj/
+node_modules/
+test-results/
+.pnpm-store/
+
+# TypeScript build outputs
+SafariExtension/Resources/*.js

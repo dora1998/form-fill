@@ -2,26 +2,77 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Label("姓名・住所を、入力欄に合わせて。", systemImage: "rectangle.and.pencil.and.ellipsis")
-                    Text("Form Fillは、日本の姓名・住所の自動入力を目指す開発中のアプリです。")
-                }
-                Section("Safari拡張を有効にする") {
-                    Text("設定 → アプリ → Safari → 機能拡張 → Form Fillをオンにしてください。")
-                    Text("Safariでフォームを開き、拡張のメニューからForm Fillを選ぶと「このページを解析」からダミー情報の入力を試せます。")
-                }
-                Section("現在の開発段階") {
-                    Label("固定ダミー情報による自動入力", systemImage: "checkmark.circle")
-                    Text("固定の架空プロフィールを使い、ルールと端末内モデルで姓名・住所を分類して入力します。プロフィール保存は未実装です。")
-                    Text("山田 太郎 / 100-0001 東京都千代田区千代田1-1 テストマンション101号室。入力先サイトへダミー値が渡ります。")
-                }
-                Section("開発用") {
-                    NavigationLink("保存したデバッグログ") { DebugReportsView() }
-                }
+        TabView {
+            Tab("使い方", systemImage: "sparkles.rectangle.stack") {
+                NavigationStack { WelcomeView() }
             }
-            .navigationTitle("Form Fill")
+            Tab("設定", systemImage: "gearshape") {
+                NavigationStack { ProfileSettingsView() }
+            }
+        }
+        .tint(.blue)
+    }
+}
+
+private struct WelcomeView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Image(systemName: "rectangle.and.pencil.and.ellipsis")
+                        .font(.system(size: 38)).foregroundStyle(.blue)
+                        .accessibilityHidden(true)
+                    Text("住所入力を、\nもっとスムーズに。")
+                        .font(.largeTitle.bold())
+                    Text("Safariの姓名・住所欄に合わせて、入力候補をまとめて提案します。")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(24)
+                .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 24))
+
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("はじめるための3ステップ").font(.title3.bold())
+                    step("1", title: "Safari拡張をオンにする", detail: "設定 → アプリ → Safari → 機能拡張 → Form Fillをオンにします。")
+                    step("2", title: "サイトへのアクセスを許可", detail: "SafariのページメニューからForm Fillを選び、利用するサイトへのアクセスを許可します。")
+                    step("3", title: "入力候補を確認して入力", detail: "SafariのページメニューからForm Fillを開き、「このページを解析」を押します。入力内容を確認してから入力ボタンを押してください。")
+                }
+                .padding(20)
+                .background(.background, in: RoundedRectangle(cornerRadius: 20))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("現在はお試しプロフィール", systemImage: "person.crop.rectangle")
+                        .font(.headline)
+                    Text("山田 太郎さんの架空の情報でお試しいただけます。設定画面で入力する内容を確認できます。住所の編集・保存は今後対応予定です。")
+                }
+                .font(.subheadline)
+
+                Label("解析は端末内で処理。フォームは自動送信しません。", systemImage: "lock.shield")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Text("iOS 26以降・Apple Intelligence対応端末が必要です。Apple Intelligenceを有効にし、モデルの準備が完了してからご利用ください。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            .padding(20)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("Form Fill")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func step(_ number: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(number).font(.headline).foregroundStyle(.blue)
+                .frame(width: 30, height: 30)
+                .background(.blue.opacity(0.1), in: Circle())
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
         }
     }
 }
+
+#Preview { ContentView() }

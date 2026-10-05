@@ -126,3 +126,16 @@ test('analysis bridge forwards bounded metadata, excludes current values and rej
   await listener({ type: 'analyzeForm', requestID: 'request', fields: Array(41).fill({}) }, { id: 'extension-id' });
   assert.equal(forwarded.length, 1);
 });
+
+test('removed inline requests never reach the native bridge', async () => {
+  let listener;
+  let forwarded = 0;
+  vm.runInNewContext(resource('background.js'), { browser: { runtime: {
+    id: 'extension-id', onMessage: { addListener: fn => { listener = fn; } },
+    sendNativeMessage: async () => { forwarded++; return { ok: true }; }
+  } } });
+  for (const sender of [{ id: 'extension-id' }, { id: 'extension-id', tab: { id: 1 }, frameId: 0, url: 'https://fixture.example/form' }]) {
+    assert.equal((await listener({ type: 'analyzeInline', requestID: 'old', fields: [] }, sender)).error, 'unsupported_request');
+  }
+  assert.equal(forwarded, 0);
+});

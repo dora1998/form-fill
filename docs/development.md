@@ -2,7 +2,7 @@
 
 ## 固定ダミー情報による最小実装
 
-Safariのポップアップで「このページを解析」→入力予定値を確認→「ダミー情報を入力する」。姓名・カナ・郵便番号・住所を対象に、明確なラベルとautocompleteはルール、曖昧な欄はFoundation Modelsの構造化出力で分類する。値は `Shared/FillPlan.swift` の固定プロフィールから合成し、モデルへ渡さない。保存・編集UIは未実装。
+Safariのポップアップで「このページを解析」→入力予定値を確認→「ダミー情報を入力する」。姓名・カナ・郵便番号・住所を対象に、明確なラベルとautocompleteはルール、曖昧な欄はFoundation Modelsの構造化出力で分類する。値は `Shared/FillPlan.swift` の固定プロフィールから合成し、モデルへ渡さない。アプリの設定画面で同じダミープロフィールを確認できる。編集・保存は未実装。
 
 ダミー値は山田 太郎、ヤマダ タロウ、1000001、東京都、千代田区、千代田、1-1、テストマンション101号室。実在する本人の情報ではない。入力時にはサイトへ値が渡る。フォームの送信は行わない。
 
@@ -15,11 +15,13 @@ Apple Intelligence対応端末・iOS 26以降が必要。モデル未有効化�
 ## ビルドとiPhoneでの試し方
 
 ```sh
+pnpm install --frozen-lockfile
+pnpm build
 xcodegen generate
 open FormFill.xcodeproj
 ```
 
-Xcode 26以降でFormFill schemeを選択し、アプリ・拡張に自分のTeamを設定してiPhoneへインストールする。`project.yml` が構成の正本。Bundle IDを変更する場合は `background.js` のnative message送信先とテストも合わせる。
+Xcode 26以降でFormFill schemeを選択し、アプリ・拡張に自分のTeamを設定してiPhoneへインストールする。`project.yml` が構成の正本。Bundle IDを変更する場合は `SafariExtension/Source/background.ts` のnative message送信先とテストも合わせる。
 
 1. 設定 → アプリ → Safari → 機能拡張 → Form Fillを有効にする。
 2. Macでリポジトリのルートから `python3 -m http.server 8000 --bind 0.0.0.0` を実行する。
@@ -99,8 +101,8 @@ Cookie、local/sessionStorage、ネットワーク本文、JavaScriptヒープ�
 Node.js 24以降、Python 3、macOSではSwiftを使用する。
 
 ```sh
-npm test
-npm run check
+pnpm test
+pnpm check
 swiftc Shared/FillPlan.swift Tests/Native/main.swift -o /tmp/fill-planner-tests
 /tmp/fill-planner-tests
 xcodebuild -project FormFill.xcodeproj -scheme FormFill \
@@ -108,7 +110,7 @@ xcodebuild -project FormFill.xcodeproj -scheme FormFill \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-`Tests/Browser/autofill.cjs` はPlaywrightと対応するWebKitのある環境で `node Tests/Browser/autofill.cjs` として実行する（任意の追加検証）。リポジトリにはnpm依存を追加していない。必要なら一時ディレクトリにPlaywrightを用意し、`NODE_PATH` と `PLAYWRIGHT_BROWSERS_PATH` を指定する。`WEBKIT_EXECUTABLE` で実行ファイルを指定することもできる。WebKitで実際のDOMとポップアップの一連の操作を検証し、ネイティブ分類応答はモックする。Safariの拡張権限・ネイティブ通信・Foundation Models推論は実機で別途確認する。
+`Tests/Browser/autofill.cjs` はPlaywrightと対応するWebKitのある環境で `node Tests/Browser/autofill.cjs` として実行する（任意の追加検証）。Playwrightは開発依存として固定し、`pnpm exec playwright install webkit` でブラウザーを準備する。`pnpm test:browser` で既存DOM・ポップアップのテストを実行する。`WEBKIT_EXECUTABLE` で実行ファイルを指定することもできる。WebKitで実際のDOMとポップアップの一連の操作を検証し、ネイティブ分類応答はモックする。Safariの拡張権限・ネイティブ通信・Foundation Models推論は実機で別途確認する。
 
 開発用のネイティブtrace境界は、macOS 26以降の対応Macで次のように追加検証できる。モデルの生成は行わず、空欄リストの要求で通常応答からの除外・明示指定時のtrace返却・JSONシリアライズを確認する。
 
@@ -125,8 +127,8 @@ swiftc -target "$(uname -m)-apple-macos26.0" Shared/FillPlan.swift \
 
 | 検証 | 環境 | 結果 |
 | --- | --- | --- |
-| `npm test` | macOS / Node.js 24.12.0 | 疎通・安全な欄数検出・診断UIテスト成功 |
-| `npm run check` | macOS / Python 3 | plist、manifest、権限、リソース参照成功 |
+| `pnpm test` | macOS / Node.js 24.12.0 | 疎通・安全な欄数検出・診断UIテスト成功 |
+| `pnpm check` | macOS / Python 3 | plist、manifest、権限、リソース参照成功 |
 | Swift値合成・入力契約 | macOS / Swift | 姓名、ひらがな、住所、郵便番号、select、制約、既存値、要求検証成功 |
 | XcodeGen・署名なしSimulatorビルド | macOS / Xcode 27.0 | 成功 |
 | 実DOM入力とpopupフロー | Playwright / WebKit 26.5 | 成功（9欄入力、既存値保持、DOM変更・補完検出、イベント、制約、popupの解析→入力） |
@@ -202,3 +204,29 @@ classifierVersion 5の実機では、生成形式の検証は成功したが、3
 郵便番号を `type="tel"` で表す欄も、ラベルまたは近傍見出しから検出する。例文だけのlabelは近傍の項目見出しを優先し、直前の見出し専用trも参照する。titleはplaceholderの補助情報として保持する。`Fixtures/watermark-address.html` は個人情報を含まない再現用フォーム。番地・方書／マンション名の分類と、電話欄・非表示欄の除外、送信を起こさないことを検証する。contentVersion 7、collectorVersion 4、classifierVersion 7。
 
 住所検索がサーバー送信を伴うフォームでは、郵便番号入力後の住所検索と検索結果の選択は利用者が行う。フォーム送信の自動化は行わない。
+
+
+## TypeScriptのビルドとポップアップ
+
+拡張の正本は `SafariExtension/Source/`。`content/fields.ts` が候補・メタデータ抽出、`snapshot.ts` が変更検知、`apply.ts` が制約確認と入力、`index.ts` がメッセージとページ内状態を扱う。`popup/` は入力プレビュー、疎通診断、匿名化診断コピー、詳細ログ保存に分けた。`diagnostics/` のページ収集関数はSafariの `scripting.executeScript` が単独でシリアライズできるよう、実行時importを持たない。`shared/contracts.ts` がSwiftと対応する型契約。
+
+`pnpm build` でSafari用のclassic IIFEを `Resources/*.js` に生成する。生成JSはGit管理せず、`.gitignore` で除外する。JSを直接編集しない。クリーンチェックアウトでは `pnpm install --frozen-lockfile` と `pnpm build` を実行してから `xcodegen generate` を行う（生成されたリソースをXcodeプロジェクトに含めるため）。TypeScript変更後もbuildを実行する。Web・iOS両方のCIで生成し、strict型チェック、メッセージ境界テスト、実WebKitのポップアップと入力を検証する。
+
+Safariのポップアップを開いて解析するときに、`activeTab` と `scripting.executeScript` でページ内のハンドラーを導入する。自動実行するcontent_scriptsや全サイトのhost_permissionsは宣言しない。ネイティブ要求はポップアップなどの拡張ページからだけ受け付け、コンテンツスクリプトからの要求は拒否する。
+
+2026-10-06の実機利用フィードバックを受け、フォーカス時の候補UIと専用の解析経路を撤去した。設定画面・TypeScript化・pnpm設定は継続する。下記のインライン確認は撤去前の検証履歴。
+
+撤去後はstrict型チェック、21件のNodeテスト、WebKitでのポップアップ・9欄入力・制約と変更検知の回帰テストが成功。実機向け署名付きDebugビルドとパッケージ検証が成功し、「どらのiPhone 17」への更新インストールを完了した。以前から開いているページでは旧スクリプトが残る場合があるため、更新後にページを再読み込みする。
+
+アプリの設定表示は `DummyProfile` をネイティブの値合成と共有する。保存・プロフィール編集は今回の範囲外。実機でのSafariの権限、キーボード表示、Foundation Modelsの精度は実利用開始時に確認する。
+
+
+### 2026-10-06の今回の検証
+
+- Xcode 27.0 / iOS 27.0シミュレーターでDebug・Release構成の署名なしビルド成功。使い方タブと設定タブの表示、編集不可のプロフィールのアクセシビリティ内容を確認。
+- Node.js 24.12.0 / pnpm 11.19.0でstrict型チェック、21件のメッセージ・診断テスト、plist・manifest・生成リソースの検証に成功。frozen lockfileによる再インストールを確認。
+- Playwright 1.56.1 / WebKit 26.0で既存フォームの抽出・9欄入力・上書き・イベント・入力制約・詳細ログの回帰テストに成功。インラインUIの実ポインタークリック、closed Shadow DOM、フォーカス保持、閉じる/Escape、古い計画の拒否、解析中のフォーカス移動、モデル不可・未分類・例外、幅320pxの画面、初期フォーカス、対象欄の削除も確認。分類応答はモック。
+- Swiftの住所合成・デバッグログ保存テスト成功。
+- 起床後の依頼に従い、接続された「どらのiPhone 17」向けにDebug構成を署名付きでビルド。パッケージ内のmanifest・生成リソースを検証し、実機へインストールしてアプリ起動に成功。実機Safari上の操作確認はまだ行っていない。
+- 利用者による127.0.0.1への明示許可後、Fixturesのみをローカル配信し、iOS 27.0シミュレーターのSafariでサイトアクセスを1日だけ許可。`japanese-address.html` のフィールド直下の候補から、実際のcontent→background→native連携を通じて9欄をプレビューし、9欄入力・0欄保留を確認。姓名・カナ・郵便番号・都道府県・市区町村・番地・建物名の表示を確認した。閉じる操作後は別欄へフォーカスしても候補が再表示されないことを確認。
+- 上記Safari確認のフォームは明示ラベルを持つ合成フォームであり、曖昧な欄のFoundation Models分類精度を示すものではない。ソフトウェアキーボード表示時の実機レイアウトとストア審査は未確認。

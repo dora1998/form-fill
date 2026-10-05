@@ -1,0 +1,5 @@
+minimumReleaseAge: 4320
+minimumReleaseAgeStrict: true
+blockExoticSubdeps: true
+allowBuilds:
+  esbuild: true
