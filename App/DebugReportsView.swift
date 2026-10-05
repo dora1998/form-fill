@@ -39,14 +39,10 @@ struct DebugReportsView: View {
                             .buttonStyle(.bordered)
                         ShareLink(item: url) { Label("共有", systemImage: "square.and.arrow.up") }
                             .buttonStyle(.bordered)
-                        Button(role: .destructive) { delete([url]) } label: {
-                            Label("削除", systemImage: "trash")
-                        }
-                        .buttonStyle(.bordered)
                     }
                 }
             }
-            .onDelete { offsets in delete(offsets.map { reports[$0] }) }
+            .onDelete(perform: delete)
         }
         .navigationTitle("デバッグログ")
         .toolbar { Button("更新", systemImage: "arrow.clockwise") { refresh() } }
@@ -70,9 +66,9 @@ struct DebugReportsView: View {
         } catch { message = "ログを読み込めませんでした。再試行してください。" }
     }
 
-    private func delete(_ urls: [URL]) {
+    private func delete(_ offsets: IndexSet) {
         do {
-            for url in urls { try FileManager.default.removeItem(at: url) }
+            for index in offsets { try FileManager.default.removeItem(at: reports[index]) }
             refresh()
         } catch { message = "ログを削除できませんでした。「更新」して再試行してください。" }
     }
