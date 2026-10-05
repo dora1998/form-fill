@@ -18,7 +18,7 @@ struct FormField: Codable {
     let options: [Option]
 
     var hint: String { [label, ariaLabel, name, htmlID, placeholder, context].joined(separator: " ").lowercased() }
-    var isPostalControl: Bool { autocomplete.split(separator: " ").contains("postal-code") || (name + " " + htmlID).range(of: "zip|postal|postcode|郵便番号", options: [.regularExpression, .caseInsensitive]) != nil }
+    var isPostalControl: Bool { autocomplete.split(separator: " ").contains("postal-code") || (name + " " + htmlID).range(of: "zip|postal|postcode|郵便番号", options: [.regularExpression, .caseInsensitive]) != nil || (label + " " + ariaLabel).contains("郵便番号") }
     var displayLabel: String { [label, ariaLabel, placeholder, name, htmlID].first(where: { !$0.isEmpty }) ?? id }
     var numberedAddressLine: Int? {
         let text = [label, ariaLabel, placeholder, autocomplete].joined(separator: " ")
@@ -218,7 +218,7 @@ enum FillPlanner {
         if label.range(of: "(市区町村郡|市区町村|市町村)以降", options: .regularExpression) != nil { return .addressWithoutPrefecture }
         if label.range(of: "(市区町村|市町村).*番地", options: .regularExpression) != nil { return .municipalityLocalityStreet }
         if label.range(of: "(町名|町域).*番地", options: .regularExpression) != nil { return .localityStreet }
-        if label.contains("建物名") && !label.contains("番地") { return .building }
+        if ["建物名", "マンション名", "アパート名", "方書"].contains(where: label.contains) && !label.contains("番地") { return .building }
         if label.contains("都道府県") { return .prefecture }
         // Some city-labelled fields explicitly show a city, ward and town in their example.
         if label == "市区町村" && field.placeholder.range(of: "市.+区.+(町|丁目)", options: .regularExpression) != nil { return .municipalityLocality }

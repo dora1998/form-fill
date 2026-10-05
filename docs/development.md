@@ -56,6 +56,31 @@ schemaVersion 3では、外部ユーザーから届いたJSONだけで対象と�
 
 原文を含めないため、ラベルの解釈違いはこのJSONだけでは完全に再現できない。必要な場合は架空の値と一般的な項目名で最小の合成フォームを作り、回帰テストにする。
 
+## 開発用の生データをコピー
+
+認証済みの住所入力画面を実機で開いたまま、ポップアップの「開発用の詳細情報」を展開する。「次の解析で詳細を記録する」をチェックし、「このページを解析」→必要ならプレビューを確認して入力→「開発用の生データをコピー」。自動コピーできない場合は手動コピー欄を使う。JSONを調査者に渡すと、認証環境の用意なしでDOMと抽出ロジック、分類の原文、入力前後を照合できる。
+
+これは通常の「デバッグ情報をコピー」と別の出力であり、原文を匿名化しない。個人情報、パスワード欄・hidden欄の値、HTMLやURLに埋め込まれた認証トークンが含まれ得る。共有前に内容を確認する。外部送信やディスク保存は行わず、直近1回をページの拡張スクリプト内に保持する。ポップアップを閉じても同じ文書でコピーでき、チェックなしの再解析・ページの再読み込みで記録は消える。URLが変わると旧URLの記録は返さない。
+
+| JSONの位置 | 内容 |
+| --- | --- |
+| `page.documents` | コピー時のHTML原文、全種類の標準入力欄の属性・現在値・選択肢・選択状態・ラベル原文・表示位置/スタイル・制約の検証結果 |
+| `page.lastRun.fields` | 解析時の実際の抽出メタデータと入力前の値。f0等のIDで分類・入力記録と対応 |
+| `page.lastRun.analysisPage` | 解析開始時のDOMと現在値のスナップショット |
+| `page.lastRun.analysis.response` | ネイティブの返却原文。入力予定値、分類、保留理由、診断を含む |
+| `page.lastRun.analysis.response.developerDiagnostics` | ネイティブのOS/locale、経過時間、各バッチのinstructions・prompt・生成JSON・例外原文・出力検証の時系列ログ。詳細記録を指定した要求のみ返す（Releaseでも利用可能） |
+| `page.lastRun.fill` | 入力要求、適用直前/直後の値、setter・input/changeイベント・150ms待機後の各時点の値、filled/changed_by_page等の結果、例外、時刻 |
+| `page.url`, `page.viewport` | URL全文、user agent、言語、画面サイズ/倍率、スクロール位置 |
+| `page.unavailable`, `page.errors`, `page.documents[].truncated` | アクセスできないフレーム、収集時の例外、上限による省略箇所 |
+
+解析前・未記録でも現在のDOMをコピーできる。解析未実行・モデル利用不可・タイムアウトは記録に状態を残す。現在ページの取得に失敗した場合は失敗の原文をコピーし、成功したスナップショットと区別する。既存のエンドユーザー向け出力は許可したコードだけを再構築し、生データやネイティブtraceを混入させない。
+
+同一オリジンのiframeとopen Shadow DOMも別のdocuments要素として収録する。異なるオリジンのiframe・closed Shadow DOMは取得できない。自動入力の対象範囲はトップ文書の標準欄のまま。最大20文書、合計30,000要素・1,000入力欄・HTML合計2,000,000文字、selectごとの選択肢メタデータは先頭1,000件まで収録し、省略を明示する。解析対象は従来どおり最大40欄。
+
+HTML属性のvalueと実際の現在値は異なる場合があるため、`controls[].value`を参照する。`nodeIndex`はその文書/Shadow DOMの`querySelectorAll('*')`順で、HTML内の欄との対応を取れる。詳細記録に含まれる同じDOM要素には`fieldID`を付け、解析時のf0等へ直接対応できる。サイトが要素を置き換えた場合や未記録の欄はnullになる。HTMLはスクリプトも含む原文であり、信頼したページとして実行せずテキストとして調査する。抽出データから分類の回帰テストを作り、DOMをもとに架空の値の最小フォームへ落とし込む。
+
+Cookie、local/sessionStorage、ネットワーク本文、JavaScriptヒープ・イベントリスナー・収集以前のconsoleログは収録しない。認証後のDOMを調査できるが、サーバー通信やサイトの動的挙動を完全再現するものではない。非同期補完の最終状態はコピー時のcontrolsと入力直後のfill.afterを比べる。contentVersionは7。
+
 ## 自動検証
 
 Node.js 24以降、Python 3、macOSではSwiftを使用する。
@@ -71,6 +96,17 @@ xcodebuild -project FormFill.xcodeproj -scheme FormFill \
 ```
 
 `Tests/Browser/autofill.cjs` はPlaywrightと対応するWebKitのある環境で `node Tests/Browser/autofill.cjs` として実行する（任意の追加検証）。リポジトリにはnpm依存を追加していない。必要なら一時ディレクトリにPlaywrightを用意し、`NODE_PATH` と `PLAYWRIGHT_BROWSERS_PATH` を指定する。`WEBKIT_EXECUTABLE` で実行ファイルを指定することもできる。WebKitで実際のDOMとポップアップの一連の操作を検証し、ネイティブ分類応答はモックする。Safariの拡張権限・ネイティブ通信・Foundation Models推論は実機で別途確認する。
+
+開発用のネイティブtrace境界は、macOS 26以降の対応Macで次のように追加検証できる。モデルの生成は行わず、空欄リストの要求で通常応答からの除外・明示指定時のtrace返却・JSONシリアライズを確認する。
+
+```sh
+swiftc -target "$(uname -m)-apple-macos26.0" Shared/FillPlan.swift \
+  SafariExtension/FormClassifier.swift Tests/Native/developer-diagnostics.swift \
+  -o /tmp/developer-diagnostics-tests
+/tmp/developer-diagnostics-tests
+```
+
+2026-10-05の開発用コピーの追加では、Nodeの19テスト・静的チェック、WebKitでの原文/現在値収集・popupの詳細解析→入力→コピー・再注入時の保持・サイト補完の時系列・iframe/Shadow DOM/上限、ネイティブtrace境界、署名なしSimulatorビルドを確認した。iPhone実機で開発用JSONと実モデルのバッチログ取得を確認した。住所欄検出の修正はWebKit・Swiftの回帰テストで検証し、実サイトでの再検証は未実施。
 
 ## 検証結果（2026-10-04）
 
@@ -147,3 +183,9 @@ classifierVersion 5の実機では、生成形式の検証は成功したが、3
 ユーザー指定の既定分割として、classifierVersion 6では説明のない連続した住所1〜3の組にprefectureMunicipality / localityStreet / buildingをルール適用する。ラベル・placeholder・周辺見出しに具体的な説明がある場合、別の住所要素欄がある場合、2欄しかない場合や既に明示ルールで分類されている場合は適用しない。全角番号にも対応。ホスト名やname/idのサイト固有値には依存しない。
 
 モデル分類を使った場合も、番号付き住所欄内で住所要素が重複すると全体を保留し、overlapping_address_componentsを診断に記録する。別の住所1/2の組との重複は検査しない。Fixtures/numbered-address.htmlとSwift/WebKitの回帰テストで、入力済みの4欄の上書き・電話の除外・原文の非送信・分割値を検証する。
+
+### 表形式と例文ラベルの住所欄
+
+郵便番号を `type="tel"` で表す欄も、ラベルまたは近傍見出しから検出する。例文だけのlabelは近傍の項目見出しを優先し、直前の見出し専用trも参照する。titleはplaceholderの補助情報として保持する。`Fixtures/watermark-address.html` は個人情報を含まない再現用フォーム。番地・方書／マンション名の分類と、電話欄・非表示欄の除外、送信を起こさないことを検証する。contentVersion 7、collectorVersion 4、classifierVersion 7。
+
+住所検索がサーバー送信を伴うフォームでは、郵便番号入力後の住所検索と検索結果の選択は利用者が行う。フォーム送信の自動化は行わない。

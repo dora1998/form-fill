@@ -4,7 +4,8 @@ globalThis.FormFillCapturePage = requestID => {
   let stage = 'query_controls';
   try {
     const postal = element => (element.autocomplete || '').split(/\s+/).includes('postal-code')
-      || /(?:zip|postal|postcode|郵便番号)/i.test(`${element.name} ${element.id}`);
+      || /(?:zip|postal|postcode|郵便番号)/i.test(`${element.name} ${element.id}`)
+      || /郵便番号/.test(`${fieldLabel(element)} ${element.getAttribute('aria-label') || ''}`);
     const visible = element => !['hidden', 'collapse'].includes(getComputedStyle(element).visibility) && element.getClientRects().length > 0;
     const eligible = element => !element.matches(':disabled') && !element.readOnly && visible(element)
       && (['', 'text', 'number', 'search', 'select-one', 'textarea'].includes((element.type || '').toLowerCase()) || element.type === 'tel' && postal(element));
@@ -15,9 +16,16 @@ globalThis.FormFillCapturePage = requestID => {
       copy.querySelectorAll('input, select, textarea, script, style').forEach(child => child.remove());
       return copy.textContent;
     };
-    const headings = element => [element.closest('fieldset')?.querySelector('legend'), element.closest('tr')?.querySelector('th'),
+    // Stacked table forms put the heading in the immediately preceding row.
+    const previousRowHeading = element => {
+      const row = element.closest('tr');
+      const previous = row?.previousElementSibling;
+      return previous?.matches('tr') && !previous.querySelector('input, select, textarea') ? previous.querySelector('th') : null;
+    };
+    const headings = element => [element.closest('fieldset')?.querySelector('legend'), element.closest('tr')?.querySelector('th') || previousRowHeading(element),
       element.closest('dl')?.querySelector('dt'), element.closest('.field, .form-group, .form-item, .form-row')?.querySelector('.field_head, .field-label, .label')]
       .map(labelText).filter(Boolean);
+    const isExample = value => /^(?:例\s*[)）:：]|e\.?g\.?\s*[:：]?)/i.test(value.trim());
     const nearbyLabel = element => {
       let node = element;
       for (let depth = 0; depth < 3 && node?.parentElement && !node.parentElement.matches('form, body'); depth++, node = node.parentElement) {
@@ -26,10 +34,14 @@ globalThis.FormFillCapturePage = requestID => {
           if (sibling.nodeType === Node.ELEMENT_NODE && (sibling.matches('input, select, textarea') || sibling.querySelector('input, select, textarea'))) break;
           if (sibling.nodeType === Node.ELEMENT_NODE && sibling.matches('.err, .error, .invalid-feedback, script, style')) continue;
           const value = (labelText(sibling) || '').trim();
-          if (value.length <= 80 && /[\p{L}]/u.test(value)) return value;
+          if (!isExample(value) && value.length <= 80 && /[\p{L}]/u.test(value)) return value;
         }
       }
       return headings(element).at(-1) || '';
+    };
+    const fieldLabel = element => {
+      const explicit = [...element.labels || []].map(labelText).filter(value => value && !isExample(value)).join(' ');
+      return explicit || nearbyLabel(element) || [...element.labels || []].map(labelText).join(' ');
     };
     const controls = [...document.querySelectorAll('input, select, textarea')];
     stage = 'filter_candidates';
@@ -54,11 +66,11 @@ globalThis.FormFillCapturePage = requestID => {
     });
     const installed = globalThis.__formFillContentHandler;
     stage = 'snapshot_match';
-    return { version: 1, collectorVersion: 3, contentVersion: installed?.version ?? (globalThis.__formFillDiagnosticsInstalled ? 1 : 0),
+    return { version: 1, collectorVersion: 4, contentVersion: installed?.version ?? (globalThis.__formFillDiagnosticsInstalled ? 1 : 0),
       controlCount: controls.length, eligibleCount: all.length, iframeCount: document.querySelectorAll('iframe').length,
       truncated: controls.length > fields.length, analysisMatchesPage: installed?.matchesSnapshot?.(requestID, all) === true, fields };
   } catch {
     // Never return exception messages: DOM/framework errors can contain secrets.
-    return { version: 1, collectorVersion: 3, collectorError: stage };
+    return { version: 1, collectorVersion: 4, collectorError: stage };
   }
 };

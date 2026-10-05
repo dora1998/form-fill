@@ -17,8 +17,8 @@ struct FormClassification {
 }
 
 struct FormClassifier {
-    // Raw website metadata and model output belong only in Debug logging.
-    // The copied diagnostic report never uses this stream.
+    // Raw metadata is logged in Debug and exported on explicit developer requests.
+    // The end-user safe report never uses this stream.
     #if DEBUG
     private static let debugLogger = Logger(subsystem: "dev.formfill.app.extension", category: "FormClassifier")
     #endif
@@ -51,12 +51,30 @@ struct FormClassifier {
             debugLog("analysis_rejected reason=invalid_request")
             return ["version": 1, "ok": false, "error": "invalid_request"]
         }
-        debugLog("analysis_started classifier_version=6 field_count=\(fields.count)")
-        #if DEBUG
-        if let data = try? JSONEncoder().encode(fields), let json = String(data: data, encoding: .utf8) {
-            debugLog("extracted_fields_raw=\(json)")
+        // Detailed export is explicitly requested by the development UI. Never
+        // attach it to a normal analysis response or the end-user safe report.
+        let detailed = (message as? [String: Any])?["developerDiagnostics"] as? Bool == true
+        var trace = [[String: Any]]()
+        func log(_ text: @autoclosure () -> String) {
+            if detailed {
+                trace.append(["elapsedMs": Int(Date().timeIntervalSince(analysisStarted) * 1000), "message": text()])
+            }
+            debugLog(text())
         }
-        #endif
+        func finish(_ response: [String: Any]) -> [String: Any] {
+            var response = response
+            if detailed {
+                response["developerDiagnostics"] = ["trace": trace,
+                    "osVersion": ProcessInfo.processInfo.operatingSystemVersionString,
+                    "locale": Locale.current.identifier,
+                    "elapsedMs": Int(Date().timeIntervalSince(analysisStarted) * 1000)]
+            }
+            return response
+        }
+        log("analysis_started classifier_version=7 field_count=\(fields.count)")
+        if let data = try? JSONEncoder().encode(fields), let json = String(data: data, encoding: .utf8) {
+            log("extracted_fields_raw=\(json)")
+        }
         switch SystemLanguageModel.default.availability {
         case .unavailable(let reason):
             let code: String
@@ -66,10 +84,10 @@ struct FormClassifier {
             case .modelNotReady: code = "model_not_ready"
             @unknown default: code = "unknown"
             }
-            debugLog("analysis_unavailable reason=\(code)")
-            return ["version": 1, "ok": false, "classifierVersion": 6, "error": "model_unavailable", "reason": code]
+            log("analysis_unavailable reason=\(code)")
+            return finish(["version": 1, "ok": false, "classifierVersion": 7, "error": "model_unavailable", "reason": code])
         case .available: break
-        @unknown default: return ["version": 1, "ok": false, "error": "model_unavailable", "reason": "unknown"]
+        @unknown default: return finish(["version": 1, "ok": false, "error": "model_unavailable", "reason": "unknown"])
         }
         var kinds = [String: FieldKind]()
         var sources = [String: String]()
@@ -78,9 +96,9 @@ struct FormClassifier {
         }
         let addressDefaults = FillPlanner.numberedAddressDefaults(fields: fields, kinds: kinds)
         for (id, kind) in addressDefaults { kinds[id] = kind; sources[id] = "rule" }
-        debugLog("numbered_address_default ids=\(addressDefaults.keys.sorted().joined(separator: ",")) layout=prefecture_municipality/locality_street/building")
+        log("numbered_address_default ids=\(addressDefaults.keys.sorted().joined(separator: ",")) layout=prefecture_municipality/locality_street/building")
         let unresolved = FillPlanner.fieldsNeedingClassification(fields, kinds: kinds)
-        debugLog("classification_selected rule_count=\(kinds.count) model_field_count=\(unresolved.count)")
+        log("classification_selected rule_count=\(kinds.count) model_field_count=\(unresolved.count)")
         var modelFailed = false
         var failures = [[String: Any]]()
         var attemptedBatches = 0
@@ -88,7 +106,7 @@ struct FormClassifier {
         let deadline = Date().addingTimeInterval(45)
         for start in stride(from: 0, to: unresolved.count, by: 4) {
             if Date() > deadline {
-                debugLog("analysis_deadline_exceeded remaining_fields=\(unresolved.count - start)")
+                log("analysis_deadline_exceeded remaining_fields=\(unresolved.count - start)")
                 modelFailed = true
                 failures.append(["fieldIDs": unresolved[start...].map(\.id), "reason": "deadline_exceeded"])
                 break
@@ -98,7 +116,7 @@ struct FormClassifier {
             let batchNumber = attemptedBatches
             let batchStarted = Date()
             let requestedIDs = batch.map(\.id).joined(separator: ",")
-            debugLog("batch_started batch=\(batchNumber) expected_ids=\(requestedIDs) expected_count=\(batch.count)")
+            log("batch_started batch=\(batchNumber) expected_ids=\(requestedIDs) expected_count=\(batch.count)")
             do {
                 // Address components depend on siblings' examples, not just their labels.
                 // Keep context bounded when a page has 40 fields. Include the closest
@@ -135,53 +153,54 @@ struct FormClassifier {
                 A 市区町村 field whose example includes town (e.g. 京都市右京区西院巽町), with a separate 番地 field and no town field, is municipalityLocality, not municipality or locality. Preserve all components indicated by its example.
                 """
                 let prompt = "Sibling context JSON: \(encodedContext)\nRequested fields JSON: \(String(data: data, encoding: .utf8)!)"
-                debugLog("batch=\(batchNumber) instructions_raw=\(instructions)")
-                debugLog("batch=\(batchNumber) prompt_raw=\(prompt)")
+                log("batch=\(batchNumber) instructions_raw=\(instructions)")
+                log("batch=\(batchNumber) prompt_raw=\(prompt)")
+                log("batch=\(batchNumber) sampling=greedy maximum_response_tokens=600 schema_ids=\(batch.map(\.id).joined(separator: ",")) schema_count=\(batch.count)")
                 let session = LanguageModelSession(instructions: instructions)
                 let result = try await session.respond(
                     to: prompt,
                     schema: try outputSchema(for: batch.map(\.id)),
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 600)
                 )
-                debugLog("batch=\(batchNumber) output_raw=\(result.rawContent.jsonString)")
+                log("batch=\(batchNumber) output_raw=\(result.rawContent.jsonString)")
                 let output = try FormClassification(result.content).fields
                 let issues = FillPlanner.modelOutputIssues(ids: output.map(\.id), kinds: output.map(\.kind), expectedIDs: batch.map(\.id))
                 let outputIDs = FillPlanner.safeModelIDs(output.map(\.id)).joined(separator: ",")
                 let outputKinds = FillPlanner.safeModelKinds(output.map(\.kind)).joined(separator: ",")
                 let elapsed = Int(Date().timeIntervalSince(batchStarted) * 1000)
-                debugLog("batch_output batch=\(batchNumber) elapsed_ms=\(elapsed) output_count=\(output.count) ids=\(outputIDs) kinds=\(outputKinds)")
+                log("batch_output batch=\(batchNumber) elapsed_ms=\(elapsed) output_count=\(output.count) ids=\(outputIDs) kinds=\(outputKinds)")
                 guard issues.isEmpty else {
                     modelFailed = true
                     let issueCodes = issues.joined(separator: ",")
-                    debugLog("batch_validation_failed batch=\(batchNumber) expected_count=\(batch.count) issues=\(issueCodes)")
+                    log("batch_validation_failed batch=\(batchNumber) expected_count=\(batch.count) issues=\(issueCodes)")
                     failures.append(["fieldIDs": batch.map(\.id), "reason": "invalid_model_output", "validationCodes": issues])
                     continue
                 }
                 for item in output { kinds[item.id] = FieldKind(rawValue: item.kind); sources[item.id] = "model" }
-                debugLog("batch_validated batch=\(batchNumber)")
+                log("batch_validated batch=\(batchNumber)")
             } catch {
                 modelFailed = true
-                debugLog("batch=\(batchNumber) error_raw=\(String(reflecting: error))")
+                log("batch=\(batchNumber) error_raw=\(String(reflecting: error))")
                 let reason = failureCode(error)
                 let elapsed = Int(Date().timeIntervalSince(batchStarted) * 1000)
-                debugLog("batch_failed batch=\(batchNumber) elapsed_ms=\(elapsed) reason=\(reason)")
+                log("batch_failed batch=\(batchNumber) elapsed_ms=\(elapsed) reason=\(reason)")
                 failures.append(["fieldIDs": batch.map(\.id), "reason": reason])
             }
         }
         for group in FillPlanner.overlappingAddressGroups(fields: fields, kinds: kinds) {
             modelFailed = true
             failures.append(["fieldIDs": group.map(\.id), "reason": "overlapping_address_components"])
-            debugLog("address_group_validation_failed ids=\(group.map(\.id).joined(separator: ",")) reason=overlapping_address_components")
+            log("address_group_validation_failed ids=\(group.map(\.id).joined(separator: ",")) reason=overlapping_address_components")
         }
         var plan = FillPlanner.plan(fields: fields, kinds: kinds, sources: sources, modelFailed: modelFailed)
         plan["requestID"] = requestID
-        plan["classifierVersion"] = 6
+        plan["classifierVersion"] = 7
         plan["modelDiagnostics"] = ["available": true, "requestedFields": unresolved.count, "attemptedBatches": attemptedBatches, "failures": failures]
         let plannedCount = (plan["items"] as? [[String: Any]])?.count ?? 0
         let skippedCount = (plan["skipped"] as? [[String: String]])?.count ?? 0
         let elapsed = Int(Date().timeIntervalSince(analysisStarted) * 1000)
-        debugLog("analysis_finished elapsed_ms=\(elapsed) planned_count=\(plannedCount) skipped_count=\(skippedCount) failure_count=\(failures.count)")
-        return plan
+        log("analysis_finished elapsed_ms=\(elapsed) planned_count=\(plannedCount) skipped_count=\(skippedCount) failure_count=\(failures.count)")
+        return finish(plan)
     }
 
     // Error descriptions/contexts may contain website strings. Export enum codes only.

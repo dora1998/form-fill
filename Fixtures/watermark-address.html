@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><title>表と疑似プレースホルダーの住所フォーム</title>
+<body><form onsubmit="event.preventDefault(); window.submissions = (window.submissions || 0) + 1">
+<table>
+  <tr><th scope="row">連絡先電話番号</th></tr>
+  <tr><td><div><label for="contact">例) 0312345678</label><input type="tel" id="contact" name="contact" title="例) 0312345678"></div></td></tr>
+  <tr><th scope="row"><span>必須</span>住所</th></tr>
+  <tr><td>
+    <table><tr><td><p>郵便番号</p><div><label for="code" style="display:none">例) 123、1234567</label><input type="tel" id="code" name="code" maxlength="7" title="例) 123、1234567"></div></td>
+      <td><input type="submit" value="住所検索"></td></tr></table>
+    <div><p>検索結果が一覧表示されます。<br>該当する住所を選択して下さい</p>
+      <div><select id="result"><option value="0">東京都千代田区千代田</option></select></div>
+      <p>番地</p><div><div><label for="street">例）4-9</label><input id="street" name="part1" title="例）4-9"></div></div>
+      <p>方書・マンション名</p><div><div><label for="building">例）テストハイツ510号室</label><input id="building" name="part2" title="例）テストハイツ510号室"></div></div>
+    </div>
+  </td></tr>
+  <tr><th scope="row">ニックネーム</th></tr>
+  <tr><td><div><label for="nickname" style="display:none">例) 会員</label><input id="nickname" title="例) 会員"></div></td></tr>
+  <tr style="display:none"><td><input id="hidden-child"></td></tr>
+</table>
+</form></body></html>
