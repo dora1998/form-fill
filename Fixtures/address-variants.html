@@ -24,7 +24,7 @@
 <label>住所全体<textarea rows="3"></textarea></label>
 <p>期待: 山田 太郎 / ヤマダ タロウ / 1000001 / 東京都千代田区千代田1-1 テストマンション101号室</p></fieldset>
 <fieldset><legend>安全な保留</legend>
-<label>姓（入力済み）<input autocomplete="family-name" value="変更しない"></label><label>お好きな色<input name="favorite_color"></label>
+<label>姓（入力済み）<input autocomplete="family-name" value="元の姓"></label><label>お好きな色<input name="favorite_color"></label>
 <label>番地<input name="house_number"></label><label>非表示<input style="display:none"></label><label>読み取り専用<input readonly value="保持"></label>
-<p>期待: 既存・不明・非表示・readonlyは保持。番地だけ1-1。</p></fieldset>
+<p>期待: 入力済みの姓を山田に上書き。番地は1-1。不明・非表示・readonlyは保持。</p></fieldset>
 <button onclick="location.reload()">リセット</button></body></html>

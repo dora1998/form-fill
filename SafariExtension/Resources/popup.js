@@ -54,6 +54,10 @@ const fillButton = document.querySelector('#fill');
 const fillStatus = document.querySelector('#fill-status');
 const preview = document.querySelector('#preview');
 let activePlan;
+let lastAnalysis = FormFillDebug.analysis('not_run');
+let debugRequestID;
+let debugFields = [];
+let debugAnalysisURL;
 const withTimeout = async promise => {
   let timer;
   try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 60000); })]); }
@@ -69,6 +73,10 @@ const showRows = (selector, rows, render) => {
   }
 };
 analyzeButton.addEventListener('click', async () => {
+  lastAnalysis = FormFillDebug.analysis('running');
+  debugRequestID = undefined;
+  debugFields = [];
+  debugAnalysisURL = undefined;
   activePlan = null;
   preview.hidden = true;
   fillButton.disabled = true;
@@ -77,24 +85,82 @@ analyzeButton.addEventListener('click', async () => {
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('no_tab');
+    debugAnalysisURL = FormFillDebug.pageURL(tab.url).url;
     await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
     const extracted = await browser.tabs.sendMessage(tab.id, { type: 'extract' });
     if (extracted?.version !== 1 || !Array.isArray(extracted.fields)) throw new Error('invalid_response');
-    if (!extracted.fields.length) { fillStatus.textContent = '対象の入力欄がありません。通常のinput・select・textareaが対象です。'; return; }
+    debugRequestID = extracted.requestID;
+    debugFields = FormFillDebug.fieldMetadata(extracted.fields);
+    if (!extracted.fields.length) { lastAnalysis = FormFillDebug.analysis('no_fields'); fillStatus.textContent = '対象の入力欄がありません。通常のinput・select・textareaが対象です。'; return; }
     const result = await withTimeout(browser.runtime.sendMessage({ type: 'analyzeForm', requestID: extracted.requestID, fields: extracted.fields }));
-    if (result?.error === 'model_unavailable') { fillStatus.textContent = unavailableReasons[result.reason] ?? unavailableReasons.unknown; return; }
+    if (result?.error === 'model_unavailable') { lastAnalysis = FormFillDebug.analysis('model_unavailable', result); fillStatus.textContent = unavailableReasons[result.reason] ?? unavailableReasons.unknown; return; }
     if (result?.version !== 1 || result.ok !== true || result.requestID !== extracted.requestID || !Array.isArray(result.items) || !Array.isArray(result.skipped)) throw new Error('analysis_failed');
+    lastAnalysis = FormFillDebug.analysis('success', result);
     activePlan = { tabID: tab.id, requestID: result.requestID, items: result.items };
     document.querySelector('#site').textContent = `入力先: ${new URL(tab.url).hostname}`;
-    showRows('#plan', result.items, item => `${item.label} → ${item.displayValue} (${item.source === 'rule' ? 'ルール' : 'モデル'})`);
+    showRows('#plan', result.items, item => `${item.label} → ${item.displayValue}${item.overwritesExisting ? '（既存の値を上書き）' : ''} (${item.source === 'rule' ? 'ルール' : 'モデル'})`);
     showRows('#skipped', result.skipped, item => `${item.label}: ${item.reason}`);
     preview.hidden = false;
     fillButton.disabled = result.items.length === 0;
     fillStatus.textContent = `${result.items.length}欄を入力予定、${result.skipped.length}欄を保留。${result.modelFailed ? 'モデル処理の一部に失敗しました。確実に判定した欄のみ表示します。' : ''}${extracted.truncated ? '先頭40欄のみ解析しました。' : ''}`;
   } catch (error) {
+    lastAnalysis = FormFillDebug.analysis(error.message === 'timeout' ? 'timeout' : 'failed');
     fillStatus.textContent = error.message === 'timeout' ? '解析が時間内に完了しませんでした。項目が少ないページで再試行してください。'
       : '解析できませんでした。Safariでこのサイトへの拡張のアクセスを許可し、再試行してください。';
   } finally { analyzeButton.disabled = false; }
+});
+
+const copyDebugButton = document.querySelector('#copy-debug');
+const debugStatus = document.querySelector('#debug-status');
+const debugOutput = document.querySelector('#debug-output');
+copyDebugButton.addEventListener('click', async () => {
+  copyDebugButton.disabled = true;
+  debugOutput.hidden = true;
+  debugOutput.value = '';
+  debugStatus.textContent = 'デバッグ情報を準備中…';
+  let page;
+  // Capture the session result before awaiting page access.
+  const analysis = lastAnalysis;
+  const requestID = debugRequestID;
+  const fields = debugFields;
+  const analysisURL = debugAnalysisURL;
+  let currentURL;
+  let captureStatus = 'no_tab';
+  let captureDiagnostics = {};
+  try {
+    try {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('no_tab');
+      currentURL = FormFillDebug.pageURL(tab.url).url;
+      captureStatus = 'injection_failed';
+      const results = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: FormFillCapturePage, args: [requestID ?? null] });
+      // No allFrames/frameIds target is specified: this is the top document.
+      // Safari's top frame ID need not be Chrome's numeric zero.
+      const first = Array.isArray(results) ? results[0] : undefined;
+      page = first?.result;
+      captureDiagnostics = { resultCount: Array.isArray(results) ? results.length : 0,
+        resultType: page === null ? 'null' : Array.isArray(page) ? 'array' : typeof page,
+        hasInjectionError: Boolean(first?.error), collectorError: page?.collectorError };
+      captureStatus = page?.version === 1 && Array.isArray(page.fields) ? 'success' : 'invalid_response';
+      if (captureStatus === 'invalid_response') page = undefined;
+    } catch { /* Access failure is a fixed code, never an exception message. */ }
+    const report = FormFillDebug.report(page, analysis, browser.runtime.getManifest().version, fields, captureStatus,
+      { analysis: analysisURL, current: currentURL }, captureDiagnostics);
+    const output = JSON.stringify(report, null, 2);
+    try {
+      await navigator.clipboard.writeText(output);
+      debugStatus.textContent = page?.version === 1 ? 'デバッグ情報をコピーしました。'
+        : fields.length ? '現在のページ構造は取得できませんでしたが、解析時の情報をコピーしました。'
+          : 'ページへのアクセスに失敗した状態をコピーしました。';
+    } catch {
+      debugOutput.value = output;
+      debugOutput.hidden = false;
+      debugOutput.focus();
+      debugOutput.select();
+      debugStatus.textContent = '自動コピーできませんでした。下のデバッグ情報を選択してコピーしてください。';
+    }
+  } catch { debugStatus.textContent = 'デバッグ情報を準備できませんでした。再試行してください。'; }
+  finally { copyDebugButton.disabled = false; }
 });
 fillButton.addEventListener('click', async () => {
   const plan = activePlan;

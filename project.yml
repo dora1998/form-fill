@@ -18,6 +18,10 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Form Fill
+        CFBundleDevelopmentRegion: ja
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -42,6 +46,9 @@ targets:
       path: SafariExtension/Info.plist
       properties:
         CFBundleDisplayName: Form Fill
+        CFBundleDevelopmentRegion: ja
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.Safari.web-extension
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler

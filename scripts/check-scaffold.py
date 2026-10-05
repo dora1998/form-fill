@@ -15,7 +15,7 @@ assert extension["NSExtensionPointIdentifier"] == "com.apple.Safari.web-extensio
 resources = root / "SafariExtension/Resources"
 manifest = json.loads((resources / "manifest.json").read_text())
 assert manifest["manifest_version"] == 3
-assert set(manifest["permissions"]) == {"activeTab", "scripting", "nativeMessaging"}
+assert set(manifest["permissions"]) == {"activeTab", "scripting", "nativeMessaging", "clipboardWrite"}
 assert "host_permissions" not in manifest
 for filename in manifest["background"]["scripts"] + [manifest["action"]["default_popup"], "content.js"]:
     assert (resources / filename).is_file(), filename

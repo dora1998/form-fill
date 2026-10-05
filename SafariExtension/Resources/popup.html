@@ -5,7 +5,7 @@
   <h1>Form Fill</h1>
   <p>固定の架空プロフィールでフォーム入力を試せます。</p>
   <p>山田 太郎 / ヤマダ タロウ<br>100-0001 東京都千代田区千代田1-1<br>テストマンション101号室</p>
-  <p>入力すると、このサイトにダミー値が渡ります。都道府県の選択欄は上書きし、ほかの既存入力は保持します。フォームの送信は行いません。</p>
+  <p>入力すると、このサイトにダミー値が渡り、プレビューに表示した欄の既存値も上書きします。フォームの送信は行いません。</p>
   <button id="analyze" type="button">このページを解析</button>
   <p id="fill-status" role="status" aria-live="polite"></p>
   <section id="preview" hidden>
@@ -19,6 +19,13 @@
   <p id="status" role="status" aria-live="polite">疎通確認では入力値の読み取り・自動入力は行いません。</p>
   <button id="check-model" type="button">拡張からローカルモデルを確認</button>
   <p id="model-status" role="status" aria-live="polite">固定の診断文だけをモデルへ送り、ページ内容や入力値は送りません。</p>
+  <hr>
+  <button id="copy-debug" type="button">デバッグ情報をコピー</button>
+  <p>ページURL・欄の構造・入力例の意味の手がかり・直近の解析結果をコピーします。URLのクエリ・フラグメント・認証情報・任意のパス識別子を除きます。入力値・ラベルや入力例の原文・選択肢・ページ本文は含みません。</p>
+  <p id="debug-status" role="status" aria-live="polite"></p>
+  <textarea id="debug-output" aria-label="手動コピー用デバッグ情報" readonly hidden></textarea>
+  <script src="debug-info.js"></script>
+  <script src="debug-page.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

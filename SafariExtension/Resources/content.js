@@ -1,5 +1,10 @@
 (() => {
-  if (globalThis.__formFillDiagnosticsInstalled) return;
+  const installed = globalThis.__formFillContentHandler;
+  if (installed?.version === 5) return;
+  if (installed) browser.runtime.onMessage.removeListener(installed.listener);
+  // Old releases did not retain the listener reference. Keep their in-flight
+  // preview intact; a page reload installs the current handler safely.
+  else if (globalThis.__formFillDiagnosticsInstalled) return;
   globalThis.__formFillDiagnosticsInstalled = true;
   let snapshot;
   const postalControl = element => (element.autocomplete || '').split(/\s+/).includes('postal-code')
@@ -23,7 +28,7 @@
   const text = value => String(value || '').trim().slice(0, 120);
   const labelText = node => {
     if (node?.nodeType === Node.TEXT_NODE) return node.textContent;
-    if (!node || node.matches('input, select, textarea')) return '';
+    if (!node || node.nodeType !== Node.ELEMENT_NODE || node.matches('input, select, textarea')) return '';
     const copy = node.cloneNode(true);
     copy.querySelectorAll('input, select, textarea, script, style').forEach(child => child.remove());
     return copy.textContent;
@@ -61,8 +66,7 @@
   });
   const unchanged = entry => entry.element.isConnected && eligible(entry.element)
     && JSON.stringify(metadata(entry.element, entry.field.id)) === JSON.stringify(entry.field);
-  const prefectureSelect = field => field.tag === 'select' && field.options.filter(option => /^(東京都|北海道|京都府|大阪府|.{2,3}県)$/.test(option.text.trim())).length >= 2;
-  browser.runtime.onMessage.addListener((message, sender) => {
+  const listener = (message, sender) => {
     if (sender.id !== browser.runtime.id) return;
     if (message?.type === 'inspect') return Promise.resolve({ version: 1, fieldCount: candidates().length });
     if (message?.type === 'extract') {
@@ -73,7 +77,12 @@
       return Promise.resolve({ version: 1, requestID, fields: entries.map(entry => entry.field), truncated: all.length > entries.length });
     }
     if (message?.type === 'applyFill') return apply(message);
-  });
+  };
+  browser.runtime.onMessage.addListener(listener);
+  globalThis.__formFillContentHandler = { version: 5, listener,
+    matchesSnapshot: (requestID, all) => Boolean(snapshot && requestID === snapshot.requestID && snapshot.url === location.href
+      && all.length === snapshot.all.length && all.every((element, index) => element === snapshot.all[index]))
+  };
   async function apply(message) {
     const saved = snapshot;
     snapshot = null; // A preview can be applied only once.
@@ -88,8 +97,7 @@
     const targets = [];
     for (const item of message.items) {
       const entry = saved.entries.find(entry => entry.field.id === item.id);
-      const overwritePrefecture = entry && item.kind === 'prefecture' && prefectureSelect(entry.field);
-      if (!entry || ids.has(item.id) || entry.field.occupied && !overwritePrefecture || typeof item.value !== 'string' || item.value.length > 300) {
+      if (!entry || ids.has(item.id) || typeof item.value !== 'string' || item.value.length > 300) {
         return { version: 1, ok: false, error: 'invalid_plan' };
       }
       ids.add(item.id);
