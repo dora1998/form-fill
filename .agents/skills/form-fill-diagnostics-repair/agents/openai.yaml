@@ -1,0 +1,4 @@
+interface:
+  display_name: "Form Fillの診断・修正"
+  short_description: "生の診断JSONから原因を調べ、個人情報を公開せずに不具合を修正する"
+  default_prompt: "$form-fill-diagnostics-repair 添付または以下の診断JSONから不具合の原因を調査し、匿名化した再現テストを作成して修正・検証してください。"
