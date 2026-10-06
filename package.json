@@ -6,7 +6,7 @@
     "build": "node scripts/build-extension.mjs",
     "typecheck": "tsc --noEmit",
     "test": "pnpm build && node --test --test-isolation=none Tests/Web/*.test.cjs",
-    "test:browser": "pnpm build && node Tests/Browser/autofill.cjs",
+    "test:browser": "pnpm build && node Tests/Browser/autofill.cjs && node Tests/Browser/inline.cjs",
     "check": "pnpm typecheck && python3 scripts/check-scaffold.py"
   },
   "devDependencies": {

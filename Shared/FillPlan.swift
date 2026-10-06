@@ -278,7 +278,7 @@ enum FillPlanner {
     }
     static func decode(_ message: Any?) -> (String, [FormField])? {
         guard let request = message as? [String: Any], request["version"] as? Int == 1,
-              request["type"] as? String == "analyzeForm",
+              ["analyzeForm", "analyzeInline"].contains(request["type"] as? String ?? ""),
               let id = request["requestID"] as? String, UUID(uuidString: id) != nil,
               let raw = request["fields"], JSONSerialization.isValidJSONObject(raw),
               let data = try? JSONSerialization.data(withJSONObject: raw), data.count <= 100_000,
@@ -294,6 +294,21 @@ enum FillPlanner {
                   && field.options.count <= 60 && field.options.allSatisfy { $0.value.count <= 120 && $0.text.count <= 120 }
               }) else { return nil }
         return (id, fields)
+    }
+
+    // No model availability check or inference on the one-step focus path.
+    static func analyzeInline(_ message: Any?) -> [String: Any] {
+        guard let (requestID, fields) = decode(message) else {
+            return ["version": 1, "ok": false, "error": "invalid_request"]
+        }
+        var kinds = [String: FieldKind]()
+        for field in fields { kinds[field.id] = rule(for: field) }
+        for (id, kind) in numberedAddressDefaults(fields: fields, kinds: kinds) { kinds[id] = kind }
+        kinds = contextualAddressKinds(fields: fields, kinds: kinds)
+        var result = plan(fields: fields, kinds: kinds,
+                          sources: kinds.mapValues { _ in "rule" }, modelFailed: false)
+        result["requestID"] = requestID
+        return result
     }
 
     static func rule(for field: FormField) -> FieldKind? {

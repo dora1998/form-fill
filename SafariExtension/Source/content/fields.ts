@@ -88,7 +88,7 @@ const groupIDs = () => {
         return [element, `g${group}`] as const;
     }));
 };
-const metadata = (element: Control, id: string, groups = groupIDs()): FormField => ({
+const metadata = (element: Control, id: string, groups = groupIDs(), readOccupied = true): FormField => ({
     id, groupID: groups.get(element)!, tag: element.tagName.toLowerCase(), type: element.type || '',
     label: text(fieldLabel(element)),
     ariaLabel: text(element.getAttribute('aria-label') || (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => labelText(document.getElementById(id))).join(' ')),
@@ -97,7 +97,7 @@ const metadata = (element: Control, id: string, groups = groupIDs()): FormField 
     context: text(headings(element).join(' ')),
     maxLength: 'maxLength' in element && element.maxLength > 0 ? element.maxLength : 0,
     pattern: text(element.getAttribute('pattern')),
-    occupied: element instanceof HTMLSelectElement ? Boolean(element.value) && !/^(選択|選んで|都道府県を選|please select|select\b|--)/i.test(element.selectedOptions[0]?.text.trim() || '') : Boolean(element.value),
+    occupied: !readOccupied ? false : element instanceof HTMLSelectElement ? Boolean(element.value) && !/^(選択|選んで|都道府県を選|please select|select\b|--)/i.test(element.selectedOptions[0]?.text.trim() || '') : Boolean(element.value),
     options: element instanceof HTMLSelectElement ? [...element.options].slice(0, 60).map(option => ({ value: text(option.value), text: text(option.text), disabled: option.disabled || Boolean((option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled)) })) : []
 });
 export { candidates, eligible, metadata, fieldLabel, headings, groupIDs };

@@ -21,7 +21,7 @@ manifest = json.loads((resources / "manifest.json").read_text())
 assert manifest["manifest_version"] == 3
 assert set(manifest["permissions"]) == {"activeTab", "scripting", "nativeMessaging", "clipboardWrite"}
 assert "host_permissions" not in manifest
-assert "content_scripts" not in manifest
+assert manifest["content_scripts"] == [{"matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle", "all_frames": False}]
 for filename in manifest["background"]["scripts"] + [manifest["action"]["default_popup"], "content.js"]:
     assert (resources / filename).is_file(), filename
 for filename in list(manifest["icons"].values()) + list(manifest["action"]["default_icon"].values()):

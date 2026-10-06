@@ -212,7 +212,7 @@ classifierVersion 5の実機では、生成形式の検証は成功したが、3
 
 `pnpm build` でSafari用のclassic IIFEを `Resources/*.js` に生成する。生成JSはGit管理せず、`.gitignore` で除外する。JSを直接編集しない。クリーンチェックアウトでは `pnpm install --frozen-lockfile` と `pnpm build` を実行してから `xcodegen generate` を行う（生成されたリソースをXcodeプロジェクトに含めるため）。TypeScript変更後もbuildを実行する。Web・iOS両方のCIで生成し、strict型チェック、メッセージ境界テスト、実WebKitのポップアップと入力を検証する。
 
-Safariのポップアップを開いて解析するときに、`activeTab` と `scripting.executeScript` でページ内のハンドラーを導入する。自動実行するcontent_scriptsや全サイトのhost_permissionsは宣言しない。ネイティブ要求はポップアップなどの拡張ページからだけ受け付け、コンテンツスクリプトからの要求は拒否する。
+Safariのポップアップを開いて解析するときに、`activeTab` と `scripting.executeScript` でページ内のハンドラーを導入する。フォーカスUI復活後はcontent_scriptsでサイトアクセスを許可されたトップ文書へ自動読み込みする。全サイトのhost_permissionsは宣言しない。通常の解析・診断要求は拡張ページからだけ受け付け、トップ文書のコンテンツスクリプトからはルール専用のanalyzeInlineだけを許可する。
 
 2026-10-06の実機利用フィードバックを受け、フォーカス時の候補UIと専用の解析経路を撤去した。設定画面・TypeScript化・pnpm設定は継続する。下記のインライン確認は撤去前の検証履歴。
 
@@ -240,3 +240,14 @@ Safariのポップアップを開いて解析するときに、`activeTab` と `
 `Fixtures/grouped-addresses.html` は配送先・請求先と補助欄を含む合成フォーム。contentVersionは10、classifierVersionは8。実サイトの推論と入力は実機で別途確認する。
 
 2026-10-06の検証では、Webテスト21件、strict型チェック、scaffoldチェック、Swift値合成・分類バッチ／文脈のグループ分離、ネイティブ診断境界、実WebKitのDOM／ポップアップ回帰テストが成功。iPhone 17 / iOS 27.0向けの署名付きDebugビルド、インストール、ホストアプリ起動も成功した。実機Safariでの解析・入力はユーザー側で検証するため未確認。
+
+
+## フォーカス時の一行自動入力（2026-10-06）
+
+サイトアクセスを許可されたページへ `content.js` を document_idle で自動読み込みする（トップ文書のみ）。初期の全欄走査、MutationObserver、ポーリング、フォーカス時のネイティブ通信・モデル推論は行わない。フォーカスした一欄のメタデータだけを取得し、明示ラベル・標準autocompleteなど単独でルール判定できる姓名・住所欄に高さ48pxの「自動入力」を表示する。現在値は表示判定では読まない。曖昧な欄は従来のポップアップから解析する。
+
+タップすると同じ構造／autocompleteグループを最大40欄抽出し、`analyzeInline` でSwiftの既存ルール・住所構成・値合成を使用して、そのまま既存の安全なapply処理へ渡す。プレビューやモデル推論は行わず、既存値も上書きする。モデルの準備状況に依存しない。backgroundはトップフレームのHTTP(S)コンテンツスクリプトからこの要求だけを受け付け、現在値・URLをnativeへ転送しない。フォーカス移動・URL／フォーム／値の変更時は古い入力計画を適用しない。
+
+UIはclosed Shadow DOMへ隔離し、ページのレイアウトを押し広げない。ソフトウェアキーボードが出た際のSafariの座標差を避けるためページ座標で直下に配置し、scroll/resizeをrequestAnimationFrameでまとめて追従する。visualViewportの表示領域から下にはみ出す場合は隠す。ボタンへのタップは入力欄のフォーカスを維持する。Escapeで閉じ、別の対象欄へ移れば再表示する。
+
+検証: strict型チェック、21件のNodeテスト、scaffoldチェック、Swiftの値合成・rules-only要求のテスト、WebKitの既存入力回帰とインライン専用テストが成功。インラインでは走査／通信なしの表示判定、一回タップ、グループ限定、フォーカス維持、幅320px・高さ48px、再注入、フォーカス移動・値変更時の取消しを確認。iPhone 17 / iOS 27.0シミュレーターで署名なしDebugビルド・インストールが成功し、Safariの基本フォームでcontent→background→native→applyを通じた9欄入力を確認した。ソフトウェアキーボード表示中の直下表示とタップ操作も確認。実機は使用していない。

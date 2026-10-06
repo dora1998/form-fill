@@ -35,7 +35,7 @@ private struct WelcomeView: View {
                     Text("はじめるための3ステップ").font(.title3.bold())
                     step("1", title: "Safari拡張をオンにする", detail: "設定 → アプリ → Safari → 機能拡張 → Form Fillをオンにします。")
                     step("2", title: "サイトへのアクセスを許可", detail: "SafariのページメニューからForm Fillを選び、利用するサイトへのアクセスを許可します。")
-                    step("3", title: "入力候補を確認して入力", detail: "SafariのページメニューからForm Fillを開き、「このページを解析」を押します。入力内容を確認してから入力ボタンを押してください。")
+                    step("3", title: "入力欄から自動入力", detail: "姓名・住所の入力欄を選び、直下の「自動入力」を押します。同じグループの判定できる欄へ、お試しプロフィールを入力します。既存値も上書きします。候補を確認したいときはSafariのページメニューからForm Fillを開けます。")
                 }
                 .padding(20)
                 .background(.background, in: RoundedRectangle(cornerRadius: 20))
