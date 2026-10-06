@@ -1,10 +1,10 @@
-import { candidates, metadata } from './fields';
+import { candidates, metadata, groupIDs } from './fields';
 import { newRequestID } from '../shared/request-id';
 import { createApply } from './apply';
 import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord } from '../shared/contracts';
 (() => {
     const installed = globalThis.__formFillContentHandler;
-    if (installed?.version === 9)
+    if (installed?.version === 10)
         return;
     if (installed) {
         browser.runtime.onMessage.removeListener(installed.listener);
@@ -22,8 +22,9 @@ import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord
     let developerEntries: Entry[] = [];
     const extract = (detailed = false): Extraction => {
         const all = candidates();
+        const groups = groupIDs();
         const requestID = newRequestID();
-        const entries = all.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`), initialValue: element.value }));
+        const entries = all.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
         snapshot = { requestID, entries, all, url: location.href };
         developerEntries = detailed ? entries : [];
         developerRecord = detailed ? {
@@ -53,7 +54,7 @@ import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord
             return apply(message);
     };
     browser.runtime.onMessage.addListener(listener);
-    globalThis.__formFillContentHandler = { version: 9, listener,
+    globalThis.__formFillContentHandler = { version: 10, listener,
         developerFieldID: element => developerRecord?.url === location.href ? developerEntries.find(entry => entry.element === element)?.field.id ?? null : null,
         developerRecord: () => developerRecord?.url === location.href ? developerRecord : null,
         matchesSnapshot: (requestID, all) => Boolean(snapshot && requestID === snapshot.requestID && snapshot.url === location.href

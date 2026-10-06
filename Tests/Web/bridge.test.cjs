@@ -34,7 +34,7 @@ test('page diagnostics exclude sensitive or unusable inputs and never access val
   let listener;
   let installs = 0;
   const field = (type, disabled = false, visible = true, readOnly = false, visibility = 'visible') => ({
-    type, disabled, readOnly, getClientRects: () => visible ? [{}] : [],
+    type, disabled, readOnly, closest: () => null, getClientRects: () => visible ? [{}] : [],
     visibility, matches: selector => selector === ':disabled' && disabled,
     get value() { throw new Error('must not read a value'); }
   });
@@ -119,9 +119,10 @@ test('analysis bridge forwards bounded metadata, excludes current values and rej
   const browser = { runtime: { id: 'extension-id', onMessage: { addListener: fn => { listener = fn; } },
     sendNativeMessage: async (_, message) => { forwarded.push(message); return { ok: true }; } } };
   vm.runInNewContext(resource('background.js'), { browser });
-  await listener({ type: 'analyzeForm', requestID: 'request', fields: [{ id: 'f0', label: '姓', value: 'private', options: [] }], url: 'private-url' }, { id: 'extension-id' });
+  await listener({ type: 'analyzeForm', requestID: 'request', fields: [{ id: 'f0', groupID: 'g1', label: '姓', value: 'private', options: [] }], url: 'private-url' }, { id: 'extension-id' });
   assert.equal(forwarded.length, 1);
   assert.equal(JSON.stringify(forwarded).includes('private'), false);
+  assert.equal(forwarded[0].fields[0].groupID, 'g1');
   await listener({ type: 'analyzeForm', requestID: 'request', fields: [] }, { id: 'extension-id', tab: { id: 1 } });
   await listener({ type: 'analyzeForm', requestID: 'request', fields: Array(41).fill({}) }, { id: 'extension-id' });
   assert.equal(forwarded.length, 1);

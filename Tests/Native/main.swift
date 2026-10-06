@@ -1,7 +1,7 @@
 import Foundation
 
-func field(_ label: String, autocomplete: String = "", length: Int = 0, occupied: Bool = false, options: [FormField.Option] = [], pattern: String = "", context: String = "", name: String = "", type: String = "text", placeholder: String = "", id: String = "f0") -> FormField {
-    FormField(id: id, tag: options.isEmpty ? "input" : "select", type: options.isEmpty ? type : "select-one", label: label, ariaLabel: "", name: name, htmlID: "", placeholder: placeholder, autocomplete: autocomplete, context: context, maxLength: length, pattern: pattern, occupied: occupied, options: options)
+func field(_ label: String, autocomplete: String = "", length: Int = 0, occupied: Bool = false, options: [FormField.Option] = [], pattern: String = "", context: String = "", name: String = "", type: String = "text", placeholder: String = "", id: String = "f0", groupID: String? = nil) -> FormField {
+    FormField(id: id, groupID: groupID, tag: options.isEmpty ? "input" : "select", type: options.isEmpty ? type : "select-one", label: label, ariaLabel: "", name: name, htmlID: "", placeholder: placeholder, autocomplete: autocomplete, context: context, maxLength: length, pattern: pattern, occupied: occupied, options: options)
 }
 func plan(_ field: FormField, _ kind: FieldKind) -> [String: Any] {
     FillPlanner.plan(fields: [field], kinds: ["f0": kind], sources: ["f0": "rule"], modelFailed: false)
@@ -120,4 +120,50 @@ assert(FillPlanner.rule(for: semanticPostal) == .postal)
 assert(value(semanticPostal, .postal) == "1000001")
 assert(FillPlanner.rule(for: field("番地", placeholder: "例）4-9")) == .street)
 assert(FillPlanner.rule(for: field("方書・マンション名", placeholder: "例）テストハイツ510号室")) == .building)
+// Each structural group owns a complete, complementary address independently.
+let checkout = ["g0", "g1"].enumerated().flatMap { index, group in
+    [field("姓", id: "f\(index * 6)", groupID: group),
+     field("名", id: "f\(index * 6 + 1)", groupID: group),
+     field("都道府県", id: "f\(index * 6 + 2)", groupID: group),
+     field("市区町村", id: "f\(index * 6 + 3)", groupID: group),
+     field("住所", autocomplete: index == 0 ? "shipping address-line1" : "billing address-line1", id: "f\(index * 6 + 4)", groupID: group),
+     field("建物名、部屋番号など (任意)", id: "f\(index * 6 + 5)", groupID: group)]
+}
+let checkoutRules = Dictionary(uniqueKeysWithValues: checkout.compactMap { f in FillPlanner.rule(for: f).map { (f.id, $0) } })
+assert(checkoutRules["f4"] == nil)
+let checkoutKinds = FillPlanner.contextualAddressKinds(fields: checkout, kinds: checkoutRules)
+assert(checkoutKinds["f4"] == .localityStreet && checkoutKinds["f10"] == .localityStreet)
+assert(FillPlanner.classificationBatches(fields: checkout, kinds: [:]).map { $0.count } == [4, 2, 4, 2])
+assert(FillPlanner.classificationBatches(fields: checkout, kinds: checkoutRules).map { $0.map(\.id) } == [["f4"], ["f10"]])
+assert(FillPlanner.siblingContext(fields: checkout, requestedIDs: ["f10"]).allSatisfy { $0.groupID == "g1" })
+let checkoutPlan = FillPlanner.plan(fields: checkout, kinds: checkoutRules, sources: [:], modelFailed: false)
+assert((checkoutPlan["items"] as! [[String: Any]]).count == 12)
+assert((checkoutPlan["skipped"] as! [[String: String]]).isEmpty)
+var broadKinds = checkoutRules; broadKinds["f4"] = .addressWithoutPrefecture; broadKinds["f10"] = .fullAddress
+assert(FillPlanner.contextualAddressKinds(fields: checkout, kinds: broadKinds)["f4"] == .localityStreet)
+assert(FillPlanner.contextualAddressKinds(fields: checkout, kinds: broadKinds)["f10"] == .localityStreet)
+let singleAddress = [field("住所全体", id: "f0", groupID: "g0"), field("建物名", id: "f1", groupID: "g0")]
+let singleKinds: [String: FieldKind] = ["f0": .fullAddress, "f1": .building]
+assert(FillPlanner.contextualAddressKinds(fields: singleAddress, kinds: singleKinds)["f0"] == .prefectureMunicipalityLocalityStreet)
+let singlePlan = FillPlanner.plan(fields: singleAddress, kinds: singleKinds, sources: [:], modelFailed: false)
+assert((singlePlan["items"] as! [[String: Any]]).map { $0["value"] as! String } == ["東京都千代田区千代田1-1", "テストマンション101号室"])
+assert(FillPlanner.rule(for: field("", autocomplete: "billing country-name")) == .unknown)
+assert(FillPlanner.rule(for: field("", autocomplete: "shipping tel-national")) == .unknown)
+let exampleAddress = [field("住所", placeholder: "例：架空区架空町", id: "f0", groupID: "g0"), field("建物名", id: "f1", groupID: "g0")]
+assert(FillPlanner.contextualAddressKinds(fields: exampleAddress, kinds: ["f1": .building])["f0"] == nil)
+let isolated = [field("住所1", id: "f0", groupID: "g0"), field("建物名", id: "f1", groupID: "g1")]
+assert(FillPlanner.contextualAddressKinds(fields: isolated, kinds: ["f1": .building])["f0"] == nil)
+let collision = [field("町名・番地", id: "f0", groupID: "g0"), field("番地", id: "f1", groupID: "g0")]
+assert(FillPlanner.overlappingAddressGroups(fields: collision, kinds: ["f0": .localityStreet, "f1": .street]).count == 1)
+let partialConflict = FillPlanner.plan(fields: [field("姓", id: "f2", groupID: "g0")] + collision,
+    kinds: ["f2": .family, "f0": .localityStreet, "f1": .street], sources: [:], modelFailed: false)
+assert((partialConflict["items"] as! [[String: Any]]).map { $0["id"] as! String } == ["f2"])
+let repeatedName = [field("姓", id: "f0", groupID: "g0"), field("姓", id: "f1", groupID: "g0")]
+assert(FillPlanner.overlappingIdentityIDs(fields: repeatedName, kinds: ["f0": .family, "f1": .family]) == ["f0", "f1"])
+let splitPostal = [field("郵便番号", length: 3, id: "f0", groupID: "g0"), field("郵便番号", length: 4, id: "f1", groupID: "g0")]
+assert(FillPlanner.overlappingIdentityIDs(fields: splitPostal, kinds: ["f0": .postalFirst3, "f1": .postalLast4]).isEmpty)
+let otherRegion = [field("都道府県", id: "f0", groupID: "g1")] + numbered.map { f -> FormField in var f = f; f.groupID = "g0"; return f }
+assert(FillPlanner.numberedAddressDefaults(fields: otherRegion, kinds: ["f0": .prefecture]).count == 3)
+invalid = valid; invalid["fields"] = try! JSONSerialization.jsonObject(with: JSONEncoder().encode([field("姓", groupID: "private-section")]))
+assert(FillPlanner.decode(invalid) == nil)
 print("Native fill planner: all checks passed")

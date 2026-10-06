@@ -1,6 +1,6 @@
 import type { FormField, Sender } from './shared/contracts';
 const failure = (error: string) => Promise.resolve({ version: 1, ok: false, error });
-const fieldKeys = ['id', 'tag', 'type', 'label', 'ariaLabel', 'name', 'htmlID', 'placeholder', 'autocomplete', 'context', 'maxLength', 'pattern', 'occupied', 'options'] as const;
+const fieldKeys = ['id', 'groupID', 'tag', 'type', 'label', 'ariaLabel', 'name', 'htmlID', 'placeholder', 'autocomplete', 'context', 'maxLength', 'pattern', 'occupied', 'options'] as const;
 /** Native requests are accepted only from extension pages such as the popup. */
 browser.runtime.onMessage.addListener((payload: unknown, sender: Sender) => {
     if (!payload || typeof payload !== 'object' || sender.id !== browser.runtime.id || sender.tab)

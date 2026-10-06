@@ -4,7 +4,7 @@ const postalControl = (element: Control) => (element.autocomplete || '').split(/
     || /郵便番号/.test(`${fieldLabel(element)} ${element.getAttribute('aria-label') || ''}`);
 const eligible = (element: Control) => {
     const visibility = getComputedStyle(element).visibility;
-    return !element.matches(':disabled') && !('readOnly' in element && element.readOnly)
+    return !element.closest('[aria-hidden="true"], [inert]') && !element.matches(':disabled') && !('readOnly' in element && element.readOnly)
         && (['', 'text', 'number', 'search', 'select-one', 'textarea'].includes((element.type || '').toLowerCase())
             || element.type === 'tel' && postalControl(element))
         && !['hidden', 'collapse'].includes(visibility) && element.getClientRects().length > 0;
@@ -53,8 +53,43 @@ const fieldLabel = (element: Control) => {
     const explicit = [...element.labels || []].map(labelText).filter(value => value && !isExample(value)).join(' ');
     return explicit || nearbyLabel(element) || [...element.labels || []].map(labelText).join(' ');
 };
-const metadata = (element: Control, id: string): FormField => ({
-    id, tag: element.tagName.toLowerCase(), type: element.type || '',
+// Opaque IDs encode structural ownership and standard autocomplete scope only.
+// Never export container IDs, headings or arbitrary section names.
+const groupIDs = () => {
+    const all = candidates();
+    const counts = new Map<Element, number>();
+    for (const element of all) {
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            counts.set(parent, (counts.get(parent) || 0) + 1);
+        }
+    }
+    const owners = all.map(element => {
+        let owner = element.parentElement;
+        while (owner && owner !== document.body) {
+            if (owner.matches('form, fieldset') || owner.matches('[role="group"], section')
+                && (counts.get(owner) || 0) >= 2) return owner;
+            owner = owner.parentElement;
+        }
+        return document.body;
+    });
+    const scope = (element: Control) => (element.autocomplete || '').toLowerCase().split(/\s+/)
+        .filter(token => token.startsWith('section-') || ['shipping', 'billing'].includes(token)).join(' ');
+    const keys: { owner: Element; scope: string }[] = [];
+    return new Map(all.map((element, index) => {
+        let value = scope(element);
+        if (!value) {
+            const neighbours = all.map((control, i) => ({ i, value: scope(control) }))
+                .filter(item => owners[item.i] === owners[index] && item.value)
+                .sort((a, b) => Math.abs(a.i - index) - Math.abs(b.i - index));
+            value = neighbours[0]?.value || '';
+        }
+        let group = keys.findIndex(key => key.owner === owners[index] && key.scope === value);
+        if (group < 0) { group = keys.length; keys.push({ owner: owners[index], scope: value }); }
+        return [element, `g${group}`] as const;
+    }));
+};
+const metadata = (element: Control, id: string, groups = groupIDs()): FormField => ({
+    id, groupID: groups.get(element)!, tag: element.tagName.toLowerCase(), type: element.type || '',
     label: text(fieldLabel(element)),
     ariaLabel: text(element.getAttribute('aria-label') || (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => labelText(document.getElementById(id))).join(' ')),
     name: text(element.name), htmlID: text(element.id), placeholder: text(element.getAttribute('placeholder') || element.getAttribute('title')),
@@ -65,4 +100,4 @@ const metadata = (element: Control, id: string): FormField => ({
     occupied: element instanceof HTMLSelectElement ? Boolean(element.value) && !/^(選択|選んで|都道府県を選|please select|select\b|--)/i.test(element.selectedOptions[0]?.text.trim() || '') : Boolean(element.value),
     options: element instanceof HTMLSelectElement ? [...element.options].slice(0, 60).map(option => ({ value: text(option.value), text: text(option.text), disabled: option.disabled || Boolean((option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled)) })) : []
 });
-export { candidates, eligible, metadata, fieldLabel, headings };
+export { candidates, eligible, metadata, fieldLabel, headings, groupIDs };

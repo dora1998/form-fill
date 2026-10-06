@@ -52,7 +52,7 @@ export const debugUtilities = (() => {
             return { url: null, pathRedacted: false };
         }
     };
-    const kinds = ['family', 'given', 'fullName', 'familyKana', 'givenKana', 'fullKana', 'postal', 'postalFirst3', 'postalLast4', 'prefecture', 'prefectureMunicipality', 'municipality', 'locality', 'street', 'building', 'localityStreet', 'municipalityLocality', 'municipalityLocalityStreet', 'addressWithoutPrefecture', 'fullAddress', 'unknown'];
+    const kinds = ['family', 'given', 'fullName', 'familyKana', 'givenKana', 'fullKana', 'postal', 'postalFirst3', 'postalLast4', 'prefecture', 'prefectureMunicipality', 'municipality', 'locality', 'street', 'building', 'localityStreet', 'municipalityLocality', 'municipalityLocalityStreet', 'addressWithoutPrefecture', 'fullAddress', 'prefectureMunicipalityLocalityStreet', 'unknown'];
     const hintRules: Record<string, RegExp> = {
         family: /姓|family|surname/i, given: /(?:^|[（(\s])名(?:$|[）)\s])|given|first.?name/i,
         full_name: /氏名|お名前|姓名|full.?name/i, kana: /カナ|かな|フリガナ|ふりがな|kana/i,
@@ -96,7 +96,7 @@ export const debugUtilities = (() => {
         return result;
     });
     const reasons: Record<string, string> = {
-        '住所欄の構成が重複しています': 'address_overlap', '既存の入力を保持': 'existing_input', '項目を判定できません': 'unclassified',
+        '住所欄の構成が重複しています': 'address_overlap', 'グループ内の入力内容が重複しています': 'group_overlap', '既存の入力を保持': 'existing_input', '項目を判定できません': 'unclassified',
         '一致する選択肢がありません': 'no_matching_option', '文字数制限に合いません': 'length_constraint',
         '入力形式の制約に合いません': 'pattern_constraint', '数値欄の制約に合いません': 'number_constraint'
     };
@@ -152,7 +152,7 @@ export const debugUtilities = (() => {
         postal: '郵便番号全体', postalFirst3: '郵便番号の先頭3桁', postalLast4: '郵便番号の末尾4桁',
         prefecture: '都道府県', prefectureMunicipality: '都道府県＋市区町村', municipality: '市区町村', locality: '町名・町域', street: '番地', building: '建物名・部屋番号',
         localityStreet: '町名＋番地', municipalityLocality: '市区町村＋町名', municipalityLocalityStreet: '市区町村＋町名＋番地',
-        addressWithoutPrefecture: '都道府県以降の住所全体', fullAddress: '都道府県からの住所全体', unknown: '不明'
+        addressWithoutPrefecture: '都道府県以降の住所全体', fullAddress: '都道府県からの住所全体', prefectureMunicipalityLocalityStreet: '都道府県・市区町村・町名・番地', unknown: '不明'
     };
     const hintDescriptions = {
         family: '姓の手がかり', given: '名の手がかり', full_name: '姓名全体の手がかり', kana: 'カナの手がかり',
