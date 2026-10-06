@@ -45,7 +45,8 @@ test('page diagnostics exclude sensitive or unusable inputs and never access val
   const context = vm.createContext({
     browser: { runtime: { id: 'extension-id', onMessage: { addListener: fn => { listener = fn; installs++; } } } },
     getComputedStyle: element => ({ visibility: element.visibility }),
-    document: { querySelectorAll: () => fields }
+    document: { querySelectorAll: () => fields, addEventListener() {}, activeElement: null },
+    window: { addEventListener() {} }, HTMLInputElement: class {}, HTMLSelectElement: class {}, HTMLTextAreaElement: class {}, cancelAnimationFrame() {}
   });
   vm.runInContext(resource('content.js'), context);
   vm.runInContext(resource('content.js'), context);
@@ -128,15 +129,21 @@ test('analysis bridge forwards bounded metadata, excludes current values and rej
   assert.equal(forwarded.length, 1);
 });
 
-test('removed inline requests never reach the native bridge', async () => {
+test('inline bridge accepts only top-level HTTP content requests and strips private data', async () => {
   let listener;
-  let forwarded = 0;
+  const forwarded = [];
   vm.runInNewContext(resource('background.js'), { browser: { runtime: {
     id: 'extension-id', onMessage: { addListener: fn => { listener = fn; } },
-    sendNativeMessage: async () => { forwarded++; return { ok: true }; }
+    sendNativeMessage: async (_, message) => { forwarded.push(message); return { ok: true }; }
   } } });
-  for (const sender of [{ id: 'extension-id' }, { id: 'extension-id', tab: { id: 1 }, frameId: 0, url: 'https://fixture.example/form' }]) {
-    assert.equal((await listener({ type: 'analyzeInline', requestID: 'old', fields: [] }, sender)).error, 'unsupported_request');
+  const message = { type: 'analyzeInline', requestID: 'request', fields: [{ id: 'f0', value: 'private' }], url: 'private' };
+  for (const sender of [{ id: 'extension-id' }, { id: 'other', tab: { id: 1 }, frameId: 0, url: 'https://fixture.example/' },
+    { id: 'extension-id', tab: { id: 1 }, frameId: 1, url: 'https://fixture.example/' },
+    { id: 'extension-id', tab: { id: 1 }, frameId: 0, url: 'file:///fixture' }]) {
+    assert.equal((await listener(message, sender)).error, 'unsupported_request');
   }
-  assert.equal(forwarded, 0);
+  await listener(message, { id: 'extension-id', tab: { id: 1 }, frameId: 0, url: 'http://fixture.example/form' });
+  assert.equal(forwarded.length, 1);
+  assert.equal(forwarded[0].type, 'analyzeInline');
+  assert.equal(JSON.stringify(forwarded).includes('private'), false);
 });

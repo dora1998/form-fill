@@ -8,7 +8,7 @@ declare global {
                 removeListener<T>(listener: (message: T, sender: Sender) => unknown): void;
             };
             sendMessage(message: {
-                type: 'analyzeForm';
+                type: 'analyzeForm' | 'analyzeInline';
                 requestID: string;
                 fields: FormField[];
                 developerDiagnostics?: boolean;

@@ -167,3 +167,13 @@ assert(FillPlanner.numberedAddressDefaults(fields: otherRegion, kinds: ["f0": .p
 invalid = valid; invalid["fields"] = try! JSONSerialization.jsonObject(with: JSONEncoder().encode([field("姓", groupID: "private-section")]))
 assert(FillPlanner.decode(invalid) == nil)
 print("Native fill planner: all checks passed")
+
+let inlineFields = [field("姓", id: "f0", groupID: "g0"), field("名", id: "f1", groupID: "g0"), field("電話", id: "f2", groupID: "g0")]
+let inlineRequest: [String: Any] = ["version": 1, "type": "analyzeInline", "requestID": UUID().uuidString,
+    "fields": try! JSONSerialization.jsonObject(with: JSONEncoder().encode(inlineFields))]
+let inlineResult = FillPlanner.analyzeInline(inlineRequest)
+assert(inlineResult["ok"] as? Bool == true)
+assert((inlineResult["items"] as? [[String: Any]])?.map { $0["value"] as! String } == ["山田", "太郎"])
+assert((inlineResult["items"] as? [[String: Any]])?.allSatisfy { $0["source"] as? String == "rule" } == true)
+assert(FillPlanner.analyzeInline(["version": 1, "type": "analyzeInline"])["error"] as? String == "invalid_request")
+print("Rules-only inline plan passed")

@@ -10,6 +10,9 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         if BridgeContract.requestType(from: message) == "saveDeveloperReport" {
             response.userInfo = [SFExtensionMessageKey: saveDeveloperReport(message)]
             context.completeRequest(returningItems: [response], completionHandler: nil)
+        } else if BridgeContract.requestType(from: message) == "analyzeInline" {
+            response.userInfo = [SFExtensionMessageKey: FillPlanner.analyzeInline(message)]
+            context.completeRequest(returningItems: [response], completionHandler: nil)
         } else if BridgeContract.requestType(from: message) == "analyzeForm" {
             Task {
                 response.userInfo = [SFExtensionMessageKey: await FormClassifier.analyze(message)]

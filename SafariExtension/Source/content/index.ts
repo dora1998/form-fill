@@ -1,10 +1,11 @@
+import { installInline } from './inline';
 import { candidates, metadata, groupIDs } from './fields';
 import { newRequestID } from '../shared/request-id';
 import { createApply } from './apply';
-import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord } from '../shared/contracts';
+import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord, Control } from '../shared/contracts';
 (() => {
     const installed = globalThis.__formFillContentHandler;
-    if (installed?.version === 10)
+    if (installed?.version === 11)
         return;
     if (installed) {
         browser.runtime.onMessage.removeListener(installed.listener);
@@ -20,11 +21,12 @@ import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord
     const apply = createApply(() => { const saved = snapshot; snapshot = undefined; return saved; }, () => developerRecord);
     let developerRecord: DiagnosticRecord | undefined;
     let developerEntries: Entry[] = [];
-    const extract = (detailed = false): Extraction => {
+    const extract = (detailed = false, focused?: Control): Extraction => {
         const all = candidates();
         const groups = groupIDs();
         const requestID = newRequestID();
-        const entries = all.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
+        const selected = focused ? all.filter(element => groups.get(element) === groups.get(focused)) : all;
+        const entries = selected.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
         snapshot = { requestID, entries, all, url: location.href };
         developerEntries = detailed ? entries : [];
         developerRecord = detailed ? {
@@ -54,7 +56,8 @@ import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord
             return apply(message);
     };
     browser.runtime.onMessage.addListener(listener);
-    globalThis.__formFillContentHandler = { version: 10, listener,
+    globalThis.__formFillContentHandler = { version: 11, listener,
+        disposeInline: installInline(target => extract(false, target), apply),
         developerFieldID: element => developerRecord?.url === location.href ? developerEntries.find(entry => entry.element === element)?.field.id ?? null : null,
         developerRecord: () => developerRecord?.url === location.href ? developerRecord : null,
         matchesSnapshot: (requestID, all) => Boolean(snapshot && requestID === snapshot.requestID && snapshot.url === location.href
