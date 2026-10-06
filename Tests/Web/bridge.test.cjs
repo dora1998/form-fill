@@ -5,31 +5,6 @@ const vm = require('node:vm');
 const path = require('node:path');
 const resource = file => fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources', file), 'utf8');
 
-test('native bridge forwards only fixed diagnostic requests from the extension popup', async () => {
-  let listener;
-  const forwarded = [];
-  const browser = { runtime: {
-    id: 'extension-id',
-    onMessage: { addListener: fn => { listener = fn; } },
-    sendNativeMessage: async (app, message) => { forwarded.push({ app, message }); return { ok: true }; }
-  } };
-  vm.runInNewContext(resource('background.js'), { browser });
-  const result = await listener({ type: 'health', privateValue: 'must not be forwarded' }, { id: 'extension-id' });
-  assert.equal(result.ok, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(forwarded)), [{
-    app: 'dev.formfill.app.extension', message: { version: 1, type: 'health' }
-  }]);
-  await listener({ type: 'modelProbe', prompt: 'must not be forwarded' }, { id: 'extension-id' });
-  assert.deepEqual(JSON.parse(JSON.stringify(forwarded[1])), {
-    app: 'dev.formfill.app.extension', message: { version: 1, type: 'modelProbe' }
-  });
-  await listener({ type: 'health' }, { id: 'extension-id', tab: { id: 1 } });
-  await listener({ type: 'health' }, { id: 'other-extension' });
-  await listener({ type: 'fill' }, { id: 'extension-id' });
-  await listener({ type: 'unknown' }, { id: 'extension-id' });
-  assert.equal(forwarded.length, 2);
-});
-
 test('page diagnostics exclude sensitive or unusable inputs and never access values', async () => {
   let listener;
   let installs = 0;
@@ -63,7 +38,7 @@ function popupContext(nativeResponse, failInjection = false, modelResponse = nul
   const status = { textContent: '' };
   const modelButton = { disabled: false, addEventListener: (_, fn) => { clickModel = fn; } };
   const modelStatus = { textContent: '' };
-  const context = { document: { querySelector: selector => selector === '#check' ? button : status },
+  const context = { window: { addEventListener() {} }, document: { querySelector: selector => selector === '#check' ? button : status },
     browser: {
       runtime: { sendMessage: async message => message.type === 'modelProbe' ? modelResponse : nativeResponse },
       tabs: { query: async () => [{ id: 5 }], sendMessage: async () => ({ version: 1, fieldCount: 4 }) },
@@ -72,9 +47,10 @@ function popupContext(nativeResponse, failInjection = false, modelResponse = nul
   };
   context.document.querySelector = selector => ({
     '#check': button, '#status': status, '#check-model': modelButton, '#model-status': modelStatus,
-    '#analyze': { addEventListener() {} }, '#fill': { addEventListener() {} }, '#fill-status': {}, '#preview': {},
+    '#analyze': { addEventListener() {} }, '#unlock': { addEventListener() {} }, '#fill': { addEventListener() {} }, '#fill-status': {}, '#preview': {},
     '#copy-debug': { addEventListener() {} }, '#debug-status': {}, '#debug-output': {}
   })[selector];
+  context.document.addEventListener = () => {};
   vm.createContext(context);
   vm.runInContext(resource('debug-info.js'), context);
   vm.runInContext(resource('popup.js'), context);
@@ -112,38 +88,4 @@ test('popup explains unavailable models and recovers from model errors', async (
   const failed = popupContext(null, false, { version: 1, ok: false, error: 'generation_failed' });
   await failed.clickModel();
   assert.match(failed.modelStatus.textContent, /モデル呼び出しに失敗しました/);
-});
-
-test('analysis bridge forwards bounded metadata, excludes current values and rejects content scripts', async () => {
-  let listener;
-  const forwarded = [];
-  const browser = { runtime: { id: 'extension-id', onMessage: { addListener: fn => { listener = fn; } },
-    sendNativeMessage: async (_, message) => { forwarded.push(message); return { ok: true }; } } };
-  vm.runInNewContext(resource('background.js'), { browser });
-  await listener({ type: 'analyzeForm', requestID: 'request', fields: [{ id: 'f0', groupID: 'g1', label: '姓', value: 'private', options: [] }], url: 'private-url' }, { id: 'extension-id' });
-  assert.equal(forwarded.length, 1);
-  assert.equal(JSON.stringify(forwarded).includes('private'), false);
-  assert.equal(forwarded[0].fields[0].groupID, 'g1');
-  await listener({ type: 'analyzeForm', requestID: 'request', fields: [] }, { id: 'extension-id', tab: { id: 1 } });
-  await listener({ type: 'analyzeForm', requestID: 'request', fields: Array(41).fill({}) }, { id: 'extension-id' });
-  assert.equal(forwarded.length, 1);
-});
-
-test('inline bridge accepts only top-level HTTP content requests and strips private data', async () => {
-  let listener;
-  const forwarded = [];
-  vm.runInNewContext(resource('background.js'), { browser: { runtime: {
-    id: 'extension-id', onMessage: { addListener: fn => { listener = fn; } },
-    sendNativeMessage: async (_, message) => { forwarded.push(message); return { ok: true }; }
-  } } });
-  const message = { type: 'analyzeInline', requestID: 'request', fields: [{ id: 'f0', value: 'private' }], url: 'private' };
-  for (const sender of [{ id: 'extension-id' }, { id: 'other', tab: { id: 1 }, frameId: 0, url: 'https://fixture.example/' },
-    { id: 'extension-id', tab: { id: 1 }, frameId: 1, url: 'https://fixture.example/' },
-    { id: 'extension-id', tab: { id: 1 }, frameId: 0, url: 'file:///fixture' }]) {
-    assert.equal((await listener(message, sender)).error, 'unsupported_request');
-  }
-  await listener(message, { id: 'extension-id', tab: { id: 1 }, frameId: 0, url: 'http://fixture.example/form' });
-  assert.equal(forwarded.length, 1);
-  assert.equal(forwarded[0].type, 'analyzeInline');
-  assert.equal(JSON.stringify(forwarded).includes('private'), false);
 });

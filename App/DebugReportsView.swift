@@ -24,7 +24,7 @@ struct DebugReportsView: View {
     var body: some View {
         List {
             Section {
-                Text("Safari拡張の「開発用の詳細情報」から「開発用データをアプリに保存」を押すと、ここにJSONファイルが追加されます。")
+                Text("旧バージョンで保存した詳細ログです。現在のバージョンは新しい詳細ログを収録しません。不要なログは左にスワイプして削除できます。")
                 Text("個人情報や認証トークンが含まれ得ます。共有前に内容を確認してください。保存した記録は削除するまで端末内に残ります。")
             }
             if let message { Text(message) }

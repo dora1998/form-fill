@@ -76,9 +76,9 @@ function popup({ denyAccess = false, denyClipboard = false, noFields = false, un
   const nodes = {};
   const copied = [];
   const messages = [];
-  const context = { setTimeout, clearTimeout, URL,
+  const context = { setTimeout: (...args) => { const timer = setTimeout(...args); timer.unref(); return timer; }, clearTimeout, URL, window: { addEventListener() {} },
     navigator: { clipboard: { writeText: async value => { if (denyClipboard) throw Error(secret); copied.push(value); } } },
-    document: { querySelector: selector => nodes[selector] ||= { hidden: false, value: '', textContent: '', disabled: false,
+    document: { addEventListener() {}, querySelector: selector => nodes[selector] ||= { hidden: false, value: '', textContent: '', disabled: false,
       addEventListener: (_, fn) => { nodes[selector].click = fn; }, replaceChildren() {}, append() {}, focus() {}, select() {} },
       createElement: () => ({}) },
     browser: { tabs: { query: async () => [{ id: 5, url: `https://example.test/${secret}?token=${secret}` }],
@@ -95,7 +95,7 @@ function popup({ denyAccess = false, denyClipboard = false, noFields = false, un
       } },
       runtime: { getManifest: () => ({ version: '0.1.0' }), sendMessage: async message => unavailable
         ? { version: 1, error: 'model_unavailable', reason: 'model_not_ready' }
-        : { version: 1, ok: true, requestID: message.requestID, items: [{ id: 'f0', kind: 'family', source: 'rule', label: secret, value: secret, displayValue: secret }], skipped: [] } }
+        : { version: 1, ok: true, sessionID: 'session', classifications: [{ id: 'f0', label: '住所', kind: 'fullAddress' }], requestID: message.requestID, items: [{ id: 'f0', kind: 'family', source: 'rule', label: secret, value: secret, displayValue: secret }], skipped: [] } }
     } };
   vm.createContext(context);
   vm.runInContext(resource('debug-info.js'), context);
@@ -110,6 +110,7 @@ test('copy works before analysis and after success, no fields, unavailable model
     await p.nodes['#copy-debug'].click();
     assert.equal(JSON.parse(p.copied[0]).lastAnalysis.status, 'not_run');
     await p.nodes['#analyze'].click();
+  if (!p.nodes['#unlock'].disabled) await p.nodes['#unlock'].click();
     await p.nodes['#copy-debug'].click();
     const report = JSON.parse(p.copied[1]);
     assert.equal(report.lastAnalysis.status, options.denyAccess ? 'failed' : options.noFields ? 'no_fields' : options.unavailable ? 'model_unavailable' : 'success');
@@ -124,6 +125,7 @@ test('copy works before analysis and after success, no fields, unavailable model
 test('clipboard denial exposes only sanitized selectable JSON for manual copying', async () => {
   const p = popup({ denyClipboard: true });
   await p.nodes['#analyze'].click();
+  if (!p.nodes['#unlock'].disabled) await p.nodes['#unlock'].click();
   await p.nodes['#copy-debug'].click();
   assert.equal(p.copied.length, 0);
   assert.equal(p.nodes['#debug-output'].hidden, false);
@@ -161,6 +163,7 @@ test('placeholder and sibling hints remain useful without copying personal data 
 test('analysis-time diagnostics survive live capture failure', async () => {
   const p = popup({ denyDebug: true });
   await p.nodes['#analyze'].click();
+  if (!p.nodes['#unlock'].disabled) await p.nodes['#unlock'].click();
   await p.nodes['#copy-debug'].click();
   const report = JSON.parse(p.copied[0]);
   assert.equal(report.page.status, 'unavailable');

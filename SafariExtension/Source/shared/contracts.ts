@@ -35,6 +35,9 @@ export interface AnalysisResult {
     ok: boolean;
     requestID: string;
     items: FillItem[];
+    sessionID?: string;
+    expiresInSeconds?: number;
+    classifications?: { id: string; kind: string; source: string; label: string }[];
     skipped: {
         id: string;
         label: string;
@@ -84,7 +87,7 @@ export interface Sender {
     frameId?: number;
     url?: string;
 }
-export type PageRequest = FillRequest | {
+export type PageRequest = FillRequest | { type: 'validateSnapshot' | 'discardSnapshot'; requestID: string } | {
     type: 'extract';
     developerDiagnostics?: boolean;
 } | {

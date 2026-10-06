@@ -33,17 +33,17 @@ private struct WelcomeView: View {
 
                 VStack(alignment: .leading, spacing: 20) {
                     Text("はじめるための3ステップ").font(.title3.bold())
-                    step("1", title: "Safari拡張をオンにする", detail: "設定 → アプリ → Safari → 機能拡張 → Form Fillをオンにします。")
-                    step("2", title: "サイトへのアクセスを許可", detail: "SafariのページメニューからForm Fillを選び、利用するサイトへのアクセスを許可します。")
-                    step("3", title: "入力欄から自動入力", detail: "姓名・住所の入力欄を選び、直下の「自動入力」を押します。同じグループの判定できる欄へ、お試しプロフィールを入力します。既存値も上書きします。候補を確認したいときはSafariのページメニューからForm Fillを開けます。")
+                    step("1", title: "プロフィールを登録", detail: "このアプリの設定で認証し、姓名・住所を登録します。端末パスコードの設定が必要です。")
+                    step("2", title: "Safari拡張をオンにする", detail: "設定 → アプリ → Safari → 機能拡張 → Form Fillをオンにし、利用するサイトへのアクセスを許可します。")
+                    step("3", title: "解析・認証・確認して入力", detail: "HTTPSの入力ページでSafariのForm Fillを開き、解析してから登録情報を確認します。入力先と予定値を確認して入力してください。既存値は上書きされます。")
                 }
                 .padding(20)
                 .background(.background, in: RoundedRectangle(cornerRadius: 20))
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("現在はお試しプロフィール", systemImage: "person.crop.rectangle")
+                    Label("姓名・住所を安全に保存", systemImage: "person.crop.rectangle")
                         .font(.headline)
-                    Text("山田 太郎さんの架空の情報でお試しいただけます。設定画面で入力する内容を確認できます。住所の編集・保存は今後対応予定です。")
+                    Text("端末内の保護された領域に保存し、利用時に認証します。機種変更時は再登録が必要です。入力した瞬間からサイトは値を読み取れます。")
                 }
                 .font(.subheadline)
 

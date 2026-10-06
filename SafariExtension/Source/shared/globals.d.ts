@@ -3,12 +3,15 @@ declare global {
     const browser: {
         runtime: {
             id: string;
+            getURL(path: string): string;
             onMessage: {
                 addListener<T>(listener: (message: T, sender: Sender) => unknown): void;
                 removeListener<T>(listener: (message: T, sender: Sender) => unknown): void;
             };
+            sendMessage(message: { type: 'prepareFill' | 'commitFill' | 'cancelFill'; requestID: string; sessionID: string; tabID: number; origin: string }): Promise<AnalysisResult & FillResponse>;
             sendMessage(message: {
                 type: 'analyzeForm' | 'analyzeInline';
+                tabID?: number;
                 requestID: string;
                 fields: FormField[];
                 developerDiagnostics?: boolean;
@@ -38,6 +41,7 @@ declare global {
                 id?: number;
                 url?: string;
             }[]>;
+            sendMessage(tabID: number, message: { type: 'validateSnapshot' | 'discardSnapshot'; requestID: string }): Promise<{ version: number; ok: boolean }>;
             sendMessage(tabID: number, message: {
                 type: 'extract';
                 developerDiagnostics?: boolean;

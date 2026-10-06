@@ -8,10 +8,9 @@ import Foundation
         var detailed = request
         detailed["developerDiagnostics"] = true
         let result = await FormClassifier.analyze(detailed)
-        let diagnostics = result["developerDiagnostics"] as? [String: Any]
-        precondition(diagnostics != nil)
-        precondition((diagnostics?["trace"] as? [[String: Any]])?.isEmpty == false)
+        precondition(result["developerDiagnostics"] == nil)
+        precondition(result["items"] == nil)
         precondition(JSONSerialization.isValidJSONObject(result))
-        print("Native development trace: explicit opt-in, normal exclusion, serialization passed")
+        print("Native classification: no raw diagnostics or profile values")
     }
 }

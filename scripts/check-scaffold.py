@@ -10,13 +10,17 @@ for relative in ["App/Info.plist", "SafariExtension/Info.plist"]:
     with (root / relative).open("rb") as stream:
         info = plistlib.load(stream)
     assert info["CFBundleIdentifier"] == "$(PRODUCT_BUNDLE_IDENTIFIER)"
+    assert info["NSFaceIDUsageDescription"]
+    assert info["ProfileKeychainAccessGroup"] == "$(AppIdentifierPrefix)dev.formfill.profiles"
 with (root / "SafariExtension/Info.plist").open("rb") as stream:
     extension = plistlib.load(stream)["NSExtension"]
 assert extension["NSExtensionPointIdentifier"] == "com.apple.Safari.web-extension"
 resources = root / "SafariExtension/Resources"
 for relative in ["App/FormFill.entitlements", "SafariExtension/FormFillExtension.entitlements"]:
     with (root / relative).open("rb") as stream:
-        assert plistlib.load(stream)["com.apple.security.application-groups"] == ["group.dev.formfill.app"]
+        entitlements = plistlib.load(stream)
+        assert entitlements["com.apple.security.application-groups"] == ["group.dev.formfill.app"]
+        assert entitlements["keychain-access-groups"] == ["$(AppIdentifierPrefix)dev.formfill.profiles"]
 manifest = json.loads((resources / "manifest.json").read_text())
 assert manifest["manifest_version"] == 3
 assert set(manifest["permissions"]) == {"activeTab", "scripting", "nativeMessaging", "clipboardWrite"}
@@ -49,5 +53,7 @@ if len(sys.argv) > 1:
     references += re.findall(r'(?:src|href)="([^"]+)"', (bundle / "popup.html").read_text())
     for filename in references:
         assert (bundle / filename).is_file(), f"Missing packaged resource: {filename}"
+    assert not (bundle / "developer-ui.js").exists()
+    assert not (bundle / "developer-page.js").exists()
     assert not list(bundle.rglob("*.ts")), "TypeScript source should not be shipped"
     print("Packaged Safari extension references passed.")

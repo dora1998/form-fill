@@ -1,40 +1,55 @@
-import type { FormField, Sender } from './shared/contracts';
-const failure = (error: string) => Promise.resolve({ version: 1, ok: false, error });
+import type { AnalysisResult, FormField, FillResponse, Sender } from './shared/contracts';
+const failure = (error: string) => ({ version: 1, ok: false, error });
 const fieldKeys = ['id', 'groupID', 'tag', 'type', 'label', 'ariaLabel', 'name', 'htmlID', 'placeholder', 'autocomplete', 'context', 'maxLength', 'pattern', 'occupied', 'options'] as const;
-/** Only the rules-only inline request is accepted from top-level content scripts. */
-browser.runtime.onMessage.addListener((payload: unknown, sender: Sender) => {
-    if (!payload || typeof payload !== 'object' || sender.id !== browser.runtime.id)
-        return failure('unsupported_request');
+const native = (message: unknown) => browser.runtime.sendNativeMessage('dev.formfill.app.extension', message) as Promise<AnalysisResult>;
+
+// Only our packaged popup may request registered data. Page/content messages,
+// including the former one-step inline path and raw diagnostics, are rejected.
+browser.runtime.onMessage.addListener(async (payload: unknown, sender: Sender) => {
+    if (sender.id !== browser.runtime.id || sender.tab || sender.url !== browser.runtime.getURL('popup.html')
+        || !payload || typeof payload !== 'object') return failure('unsupported_request');
     const message = payload as Record<string, unknown>;
-    const inline = message.type === 'analyzeInline' && Boolean(sender.tab?.id) && sender.frameId === 0 && /^https?:\/\//.test(sender.url || '');
-    if ((sender.tab && !inline) || (message.type === 'analyzeInline' && !inline))
-        return failure('unsupported_request');
-    if (!['health', 'modelProbe', 'analyzeForm', 'analyzeInline', 'saveDeveloperReport'].includes(String(message.type)))
-        return failure('unsupported_request');
-    const request: {
-        version: number;
-        type: unknown;
-        report?: string;
-        requestID?: string;
-        fields?: Partial<FormField>[];
-        developerDiagnostics?: boolean;
-    } = { version: 1, type: message.type };
-    if (message.type === 'saveDeveloperReport') {
-        if (typeof message.report !== 'string')
-            return failure('invalid_request');
-        if (message.report.length > 20 * 1024 * 1024)
-            return failure('report_too_large');
-        request.report = message.report;
+    const type = String(message.type);
+    if (['health', 'modelProbe'].includes(type)) return native({ version: 1, type });
+    if (!['analyzeForm', 'prepareFill', 'commitFill', 'cancelFill'].includes(type)) return failure('unsupported_request');
+    if (typeof message.requestID !== 'string' || message.requestID.length > 80
+        || !Number.isInteger(message.tabID)) return failure('invalid_request');
+    if (type !== 'analyzeForm' && (typeof message.sessionID !== 'string' || message.sessionID.length > 80)) return failure('invalid_request');
+    if (type === 'cancelFill') {
+        // Cancellation grants no access. Use the original scope even after navigation.
+        return native({ version: 1, type, requestID: message.requestID, sessionID: message.sessionID,
+            tabID: message.tabID, origin: message.origin });
     }
-    if (request.type === 'analyzeForm' || request.type === 'analyzeInline') {
-        if (typeof message.requestID !== 'string' || !message.requestID.length || message.requestID.length > 80
-            || !Array.isArray(message.fields) || message.fields.length > 40
-            || message.fields.some(field => !field || typeof field !== 'object'))
-            return failure('invalid_request');
-        request.requestID = message.requestID;
-        if (!inline && message.developerDiagnostics === true)
-            request.developerDiagnostics = true;
-        request.fields = message.fields.map((field: Record<string, unknown>) => Object.fromEntries(fieldKeys.map(key => [key, field[key]])));
-    }
-    return browser.runtime.sendNativeMessage('dev.formfill.app.extension', request);
+    try {
+        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id !== message.tabID || !tab.url) return failure('stale_plan');
+        const url = new URL(tab.url);
+        if (url.protocol !== 'https:' || url.username || url.password) return failure('https_required');
+        const request: Record<string, unknown> = { version: 1, type, requestID: message.requestID,
+            tabID: tab.id, origin: url.origin };
+        if (type === 'analyzeForm') {
+            if (!Array.isArray(message.fields) || message.fields.length > 40
+                || message.fields.some(field => !field || typeof field !== 'object')) return failure('invalid_request');
+            request.fields = message.fields.map((field: Record<string, unknown>) => Object.fromEntries(fieldKeys.map(key => [key, field[key]])));
+        } else request.sessionID = message.sessionID;
+        const valid = () => browser.tabs.sendMessage(tab.id!, { type: 'validateSnapshot', requestID: message.requestID as string });
+        if (!(await valid()).ok) return failure('stale_plan');
+        const result = await native(request);
+        if (!result.ok) return result;
+        const [current] = await browser.tabs.query({ active: true, currentWindow: true });
+        if (current?.id !== tab.id || current.url !== tab.url || !(await valid()).ok) {
+            if (result.sessionID) await native({ ...request, type: 'cancelFill', sessionID: result.sessionID });
+            return failure('stale_plan');
+        }
+        if (type === 'commitFill') {
+            if (result.requestID !== message.requestID || !Array.isArray(result.items)) return failure('invalid_response');
+            // Values come from the authenticated native result, never from popup input.
+            const response: FillResponse = await browser.tabs.sendMessage(tab.id!, {
+                type: 'applyFill', requestID: result.requestID,
+                items: result.items.map(({ id, kind, value }) => ({ id, kind, value }))
+            });
+            return response;
+        }
+        return result;
+    } catch { return failure('request_failed'); }
 });

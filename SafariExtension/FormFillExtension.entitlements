@@ -6,5 +6,9 @@
 	<array>
 		<string>group.dev.formfill.app</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)dev.formfill.profiles</string>
+	</array>
 </dict>
 </plist>

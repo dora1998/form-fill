@@ -23,7 +23,7 @@ enum BridgeContract {
         return [
             "version": version,
             "ok": true,
-            "capabilities": ["nativeBridge": true, "profileStorage": false, "localModelProbe": true, "localModel": true, "autofill": true]
+            "capabilities": ["nativeBridge": true, "profileStorage": true, "localModelProbe": true, "localModel": true, "autofill": true]
         ]
     }
 }

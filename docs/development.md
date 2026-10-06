@@ -1,5 +1,29 @@
 # 開発・検証の手順
 
+## 実プロフィール対応（2026-10-06）
+
+現在は実プロフィールを共有Keychainに保存し、Safari拡張のポップアップから認証して入力します。以下の過去の詳細ログ収録・ダミーのページ内入力の記述は検証履歴です。現行の利用方法はREADMEと[保存・認証設計](profile-security-design.md)を参照してください。
+
+今回の検証: Xcode 27のDebug／Release・iOSシミュレーター向け署名なしビルド、Node 20件、strict型チェック、Swiftの値合成・保護フロー、WebKitの抽出・9欄入力・既存値／変更検知・通常診断の回帰テストが成功。配布物に詳細収録JavaScriptがないことを確認した。iPhone 17 / iOS 27シミュレーターで設定画面とOSの端末パスコード認証UI、キャンセル後に登録値を表示せずロック画面へ戻ることを確認した。
+
+追加のシミュレーター確認では、署名を有効にしたDebugビルドをインストールし、Device HubのDevice > Face ID > EnrolledとAuthorized with Face IDを使用した。ホストアプリで認証成功→編集画面→架空プロフィールの入力→再認証→Keychain保存成功とロック画面への復帰を確認し、画面を撮影した。これは生体認証の成功イベントの模擬であり、実機の保護を検証したものではない。続けて、利用者が1日だけサイトアクセスを許可したhttpbin.org上の合成フォーム（標準autocomplete付き、送信ボタンなし）で、Safari拡張のFace ID成功→共有Keychain読出し→姓名・郵便番号・住所のプレビュー→再認証→3欄入力・0欄保留を確認した。撮影中の期限切れでは入力されず再解析が必要になることも確認。実機での認証・Keychainアクセスグループの保護・端末保護の確認は引き続き未完了。
+
+シミュレーターのKeychain読出しだけでは認証画面が表示されなかったため、プレビュー・入力とも新しいLAContextでdeviceOwnerAuthenticationを明示的に評価してから、同じコンテキストで保護されたKeychain項目を読むようにした。KeychainのuserPresence保護は維持する。小さいSafariポップアップ向けに解析後の導入説明をたたみ、認証済みの確認ボタンを隠して候補と実行ボタンを見やすくした。修正後のDebugビルド、Swift保護フローテスト、Node 20件、strict型チェック、scaffoldチェック、WebKit入力回帰が成功した。
+
+実機転送: 接続されたiPhone 17向けの署名付きDebugビルドとパッケージ検証に成功し、更新インストールを完了した。署名済みアプリと拡張のKeychainアクセスグループが一致することを確認した。実機Safari上の認証・入力は未検証。
+
+追加のネイティブテスト:
+
+```sh
+swiftc Shared/FillPlan.swift Shared/Profile.swift Shared/ProfileRepository.swift SafariExtension/ProfileFillService.swift Tests/Native/profile-security.swift -o /tmp/profile-security-tests
+/tmp/profile-security-tests
+```
+
+認証失敗、他origin、期限、二重入力、編集・削除、認証中のキャンセル、同時要求を合成プロフィールで検証します。このテストでは読み出しを差し替えているため、OS認証とKeychain自体は実機でも確認する必要があります。実機の値をテストやログに使わないでください。
+
+署名には両ターゲットで同じKeychainアクセスグループが必要です。`project.yml` の `keychain-access-groups` と `ProfileKeychainAccessGroup` を揃えます。`NSFaceIDUsageDescription` は両ターゲットに設定済みです。アプリから保存→Safariから認証してプレビュー→入力、認証拒否・キャンセル、ロック復帰、パスコード変更／除去、再インストールを確認してから配布します。
+
+
 ## 固定ダミー情報による最小実装
 
 Safariのポップアップで「このページを解析」→入力予定値を確認→「ダミー情報を入力する」。姓名・カナ・郵便番号・住所を対象に、明確なラベルとautocompleteはルール、曖昧な欄はFoundation Modelsの構造化出力で分類する。値は `Shared/FillPlan.swift` の固定プロフィールから合成し、モデルへ渡さない。アプリの設定画面で同じダミープロフィールを確認できる。編集・保存は未実装。

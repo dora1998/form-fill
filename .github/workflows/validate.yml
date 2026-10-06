@@ -37,6 +37,7 @@ jobs:
       - run: brew install xcodegen
       - run: swiftc Shared/FillPlan.swift Tests/Native/main.swift -o /tmp/fill-planner-tests && /tmp/fill-planner-tests
       - run: swiftc Shared/DebugReportStore.swift Tests/Native/debug-report-store.swift -o /tmp/debug-report-tests && /tmp/debug-report-tests
+      - run: swiftc Shared/FillPlan.swift Shared/Profile.swift Shared/ProfileRepository.swift SafariExtension/ProfileFillService.swift Tests/Native/profile-security.swift -o /tmp/profile-security-tests && /tmp/profile-security-tests
       - run: xcodegen generate
       - run: git diff --exit-code -- App/Info.plist SafariExtension/Info.plist
       - run: >-
