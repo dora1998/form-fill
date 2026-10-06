@@ -2,6 +2,7 @@
 export type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 export interface FormField {
     id: string;
+    groupID?: string;
     tag: string;
     type: string;
     label: string;

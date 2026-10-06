@@ -252,6 +252,33 @@ const path = require('node:path');
     assert.equal(numberedResult.results.filter(item => item.status === 'filled').length, 4);
     assert.deepEqual(await page.locator('#zip,#addr1,#addr2,#addr3').evaluateAll(nodes => nodes.map(node => node.value)), numberedValues);
     assert.equal(await page.locator('input[name=phone]').inputValue(), '');
+    await load(fs.readFileSync(path.join(__dirname, '../../Fixtures/grouped-addresses.html'), 'utf8'));
+    extracted = await send({ type: 'extract' });
+    assert.equal(extracted.fields.length, 14, 'aria-hidden and inert auxiliary inputs are excluded');
+    assert.deepEqual(extracted.fields.map(field => field.groupID), Array(7).fill('g0').concat(Array(7).fill('g1')));
+    const groupValues = ['山田', '太郎', '1000001', '13', '千代田区', '千代田1-1', 'テストマンション101号室'];
+    const groupedFill = await send({ type: 'applyFill', requestID: extracted.requestID,
+      items: extracted.fields.map((field, index) => ({ id: field.id, value: groupValues[index % 7] })) });
+    assert.ok(groupedFill.results.every(result => result.status === 'filled'));
+    assert.equal(await page.evaluate(() => document.body.dataset.submitted), undefined);
+    assert.deepEqual(await page.locator('[aria-hidden="true"] input, [inert] input').evaluateAll(inputs => inputs.map(input => input.value)), ['', '', '']);
+    extracted = await send({ type: 'extract' });
+    await page.locator('[role="group"] input').first().evaluate(input => input.setAttribute('autocomplete', 'shipping family-name'));
+    assert.equal((await send({ type: 'applyFill', requestID: extracted.requestID, items: [{ id: 'f0', value: '山田' }] })).error, 'stale_plan');
+
+    // Autocomplete section scopes separate groups even within a single form.
+    await load('<form><label>住所<input autocomplete="section-private-a shipping address-line1"></label><label>建物名<input autocomplete="section-private-a shipping address-line2"></label><label>住所<input autocomplete="section-private-b billing address-line1"></label><label>建物名<input autocomplete="section-private-b billing address-line2"></label></form>');
+    extracted = await send({ type: 'extract' });
+    assert.deepEqual(extracted.fields.map(field => field.groupID), ['g0', 'g0', 'g1', 'g1']);
+    // Structural form/fieldset boundaries work without autocomplete.
+    await load('<form><fieldset><legend>配送先</legend><label>住所<input></label><label>建物名<input></label></fieldset><fieldset><legend>請求先</legend><label>住所<input></label><label>建物名<input></label></fieldset></form><form><label>住所<input></label><label>建物名<input></label></form>');
+    extracted = await send({ type: 'extract' });
+    assert.deepEqual(extracted.fields.map(field => field.groupID), ['g0', 'g0', 'g1', 'g1', 'g2', 'g2']);
+
+    await load('<form><label>住所<input></label></form><form><label>建物名<input></label></form>');
+    extracted = await send({ type: 'extract' });
+    assert.deepEqual(extracted.fields.map(field => field.groupID), ['g0', 'g1']);
+
     console.log('WebKit DOM: extraction, 9-field fill, events, stale previews, preservation and constraints passed');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

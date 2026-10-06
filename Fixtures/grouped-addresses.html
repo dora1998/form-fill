@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>複数グループの住所フォーム</title>
+<body>
+<form onsubmit="event.preventDefault(); document.body.dataset.submitted = 'true'">
+<section aria-labelledby="shipping-heading">
+<h2 id="shipping-heading">配送先住所</h2>
+<label>姓<input autocomplete="shipping family-name"></label>
+<label>名<input autocomplete="shipping given-name"></label>
+<label>郵便番号<input maxlength="7"></label>
+<label>都道府県<select autocomplete="shipping address-level1"><option value="">選択</option><option value="13">東京都</option><option value="14">神奈川県</option></select></label>
+<label>市区町村<input autocomplete="shipping address-level2"></label>
+<label>住所<input autocomplete="shipping address-line1"></label>
+<label>建物名、部屋番号など (任意)<input autocomplete="shipping address-line2"></label>
+<div aria-hidden="true"><input autocomplete="shipping address-line1"><input autocomplete="shipping family-name"></div>
+</section>
+<div role="group" aria-labelledby="billing-heading">
+<h2 id="billing-heading">請求先住所</h2>
+<label>姓<input autocomplete="billing family-name"></label>
+<label>名<input autocomplete="billing given-name"></label>
+<label>郵便番号<input maxlength="7"></label>
+<label>都道府県<select autocomplete="billing address-level1"><option value="">選択</option><option value="13">東京都</option><option value="14">神奈川県</option></select></label>
+<label>市区町村<input autocomplete="billing address-level2"></label>
+<label>住所<input autocomplete="billing address-line1"></label>
+<label>建物名、部屋番号など (任意)<input autocomplete="billing address-line2"></label>
+<div inert><input autocomplete="billing family-name"></div>
+</div>
+<button type="submit">送信（自動入力で押さないこと）</button>
+</form>
+</body>
+</html>
