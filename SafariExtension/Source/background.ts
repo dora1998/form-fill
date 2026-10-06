@@ -4,12 +4,17 @@ const fieldKeys = ['id', 'groupID', 'tag', 'type', 'label', 'ariaLabel', 'name',
 const native = (message: unknown) => browser.runtime.sendNativeMessage('dev.formfill.app.extension', message) as Promise<AnalysisResult>;
 
 // Only our packaged popup may request registered data. Page/content messages,
-// including the former one-step inline path and raw diagnostics, are rejected.
+// including the former one-step inline path, are rejected.
 browser.runtime.onMessage.addListener(async (payload: unknown, sender: Sender) => {
     if (sender.id !== browser.runtime.id || sender.tab || sender.url !== browser.runtime.getURL('popup.html')
         || !payload || typeof payload !== 'object') return failure('unsupported_request');
     const message = payload as Record<string, unknown>;
     const type = String(message.type);
+    if (type === 'saveDeveloperReport') {
+        if (typeof message.report !== 'string' || new TextEncoder().encode(message.report).length > 20 * 1024 * 1024)
+            return failure('report_too_large');
+        return native({ version: 1, type, report: message.report });
+    }
     if (['health', 'modelProbe'].includes(type)) return native({ version: 1, type });
     if (!['analyzeForm', 'prepareFill', 'commitFill', 'cancelFill'].includes(type)) return failure('unsupported_request');
     if (typeof message.requestID !== 'string' || message.requestID.length > 80
@@ -30,6 +35,7 @@ browser.runtime.onMessage.addListener(async (payload: unknown, sender: Sender) =
         if (type === 'analyzeForm') {
             if (!Array.isArray(message.fields) || message.fields.length > 40
                 || message.fields.some(field => !field || typeof field !== 'object')) return failure('invalid_request');
+            request.developerDiagnostics = message.developerDiagnostics === true;
             request.fields = message.fields.map((field: Record<string, unknown>) => Object.fromEntries(fieldKeys.map(key => [key, field[key]])));
         } else request.sessionID = message.sessionID;
         const valid = () => browser.tabs.sendMessage(tab.id!, { type: 'validateSnapshot', requestID: message.requestID as string });

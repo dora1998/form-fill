@@ -53,7 +53,7 @@ if len(sys.argv) > 1:
     references += re.findall(r'(?:src|href)="([^"]+)"', (bundle / "popup.html").read_text())
     for filename in references:
         assert (bundle / filename).is_file(), f"Missing packaged resource: {filename}"
-    assert not (bundle / "developer-ui.js").exists()
-    assert not (bundle / "developer-page.js").exists()
+    assert (bundle / "developer-ui.js").exists()
+    assert (bundle / "developer-page.js").exists()
     assert not list(bundle.rglob("*.ts")), "TypeScript source should not be shipped"
     print("Packaged Safari extension references passed.")

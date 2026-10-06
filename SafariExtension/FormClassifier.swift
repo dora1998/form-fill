@@ -35,6 +35,18 @@ struct FormClassifier {
         guard let (requestID, fields) = FillPlanner.decode(message) else {
             return ["version": 1, "ok": false, "error": "invalid_request"]
         }
+        let detailed = (message as? [String: Any])?["developerDiagnostics"] as? Bool == true
+        var trace = [[String: Any]]()
+        let started = Date()
+        func record(_ data: [String: Any]) {
+            if detailed { var event = data; event["elapsedMs"] = Int(Date().timeIntervalSince(started) * 1000); trace.append(event) }
+        }
+        func finish(_ data: [String: Any]) -> [String: Any] {
+            var result = data
+            if detailed { result["developerDiagnostics"] = ["trace": trace, "osVersion": ProcessInfo.processInfo.operatingSystemVersionString] }
+            return result
+        }
+        record(["stage": "decoded", "fieldIDs": fields.map(\.id)])
         switch SystemLanguageModel.default.availability {
         case .unavailable(let reason):
             let code: String
@@ -45,7 +57,7 @@ struct FormClassifier {
             @unknown default: code = "unknown"
             }
 
-            return ["version": 1, "ok": false, "classifierVersion": 8, "error": "model_unavailable", "reason": code]
+            return finish(["version": 1, "ok": false, "classifierVersion": 8, "error": "model_unavailable", "reason": code])
         case .available: break
         @unknown default: return ["version": 1, "ok": false, "error": "model_unavailable", "reason": "unknown"]
         }
@@ -59,6 +71,7 @@ struct FormClassifier {
 
         let contextual = FillPlanner.contextualAddressKinds(fields: fields, kinds: kinds)
         for (id, kind) in contextual where kinds[id] != kind { kinds[id] = kind; sources[id] = "rule" }
+        record(["stage": "rules", "kinds": kinds.mapValues(\.rawValue)])
         let unresolved = FillPlanner.fieldsNeedingClassification(fields, kinds: kinds)
 
         var modelFailed = false
@@ -107,6 +120,7 @@ struct FormClassifier {
                 """
                 let prompt = "Sibling context JSON: \(encodedContext)\nRequested fields JSON: \(String(data: data, encoding: .utf8)!)"
 
+                record(["stage": "model_request", "batch": batchIndex, "instructions": instructions, "prompt": prompt])
                 let session = LanguageModelSession(instructions: instructions)
                 let result = try await session.respond(
                     to: prompt,
@@ -114,7 +128,9 @@ struct FormClassifier {
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 600)
                 )
 
+                record(["stage": "model_response", "batch": batchIndex, "response": result.content.jsonString])
                 let output = try FormClassification(result.content).fields
+                record(["stage": "decoded_response", "fields": output.map { ["id": $0.id, "kind": $0.kind] }])
                 let issues = FillPlanner.modelOutputIssues(ids: output.map(\.id), kinds: output.map(\.kind), expectedIDs: batch.map(\.id))
 
                 guard issues.isEmpty else {
@@ -128,6 +144,7 @@ struct FormClassifier {
             } catch {
                 modelFailed = true
 
+                record(["stage": "model_error", "batch": batchIndex, "error": String(reflecting: error)])
                 let reason = failureCode(error)
 
                 failures.append(["fieldIDs": batch.map(\.id), "reason": reason])
@@ -148,7 +165,8 @@ struct FormClassifier {
         classification["classifierVersion"] = 8
         classification["modelDiagnostics"] = ["available": true, "requestedFields": unresolved.count, "attemptedBatches": attemptedBatches, "failures": failures]
 
-        return classification
+        record(["stage": "classified", "result": classification])
+        return finish(classification)
     }
 
     // Error descriptions/contexts may contain website strings. Export enum codes only.

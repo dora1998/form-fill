@@ -42,8 +42,8 @@ struct ProfileSettingsView: View {
                     Button("認証して保存する") { save() }.disabled(busy)
                     Button("保存せずにロック") { lock() }.disabled(busy)
                 }
-                Section("以前の開発用ログ") {
-                    Text("旧バージョンの詳細ログにはページの入力値が含まれる場合があります。不要な記録を削除してください。新しい詳細ログは収録しません。")
+                Section("開発用の詳細ログ") {
+                    Text("Safariから詳細ログを保存できます。登録プロフィールは保存時にマスキングしますが、他の入力値やページ内の情報は残ります。共有前に確認してください。")
                     Button("保存したデバッグログ") { showLegacyLogs = true }
                 }
             } else {

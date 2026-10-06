@@ -7,7 +7,28 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         let response = NSExtensionItem()
         let message = item?.userInfo?[SFExtensionMessageKey]
 
-        if let request = message as? [String: Any],
+        if let request = message as? [String: Any], request["version"] as? Int == 1,
+           request["type"] as? String == "saveDeveloperReport", let json = request["report"] as? String {
+            Task {
+                var result: [String: Any]
+                do {
+                    guard json.utf8.count <= DebugReportStore.maximumBytes else { throw DebugReportStore.StoreError.tooLarge }
+                    // Authentication failure must never fall back to saving unmasked data.
+                    let profile = try await ProfileRepository.openForEditing()
+                    let masked = try DeveloperReportRedactor.redact(json, profile: profile)
+                    _ = try DebugReportStore.shared().save(masked)
+                    result = ["version": 1, "ok": true]
+                } catch DebugReportStore.StoreError.tooLarge {
+                    result = ["version": 1, "ok": false, "error": "report_too_large"]
+                } catch ProfileError.authentication {
+                    result = ["version": 1, "ok": false, "error": "authentication_failed"]
+                } catch {
+                    result = ["version": 1, "ok": false, "error": "report_save_failed"]
+                }
+                response.userInfo = [SFExtensionMessageKey: result]
+                context.completeRequest(returningItems: [response], completionHandler: nil)
+            }
+        } else if let request = message as? [String: Any],
            ["prepareFill", "commitFill", "cancelFill"].contains(BridgeContract.requestType(from: message) ?? "") {
             Task {
                 response.userInfo = [SFExtensionMessageKey: await ProfileFillService.shared.handle(request)]

@@ -8,6 +8,7 @@ const path = require('node:path');
   try {
     const page = await browser.newPage();
     const source = fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/content.js'), 'utf8');
+    const developerSource = fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/developer-page.js'), 'utf8');
     const captureSource = fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/debug-page.js'), 'utf8');
     async function load(html) {
       await page.unrouteAll();
@@ -18,6 +19,7 @@ const path = require('node:path');
       });
       await page.addScriptTag({ content: source });
       await page.addScriptTag({ content: captureSource });
+      await page.addScriptTag({ content: developerSource });
     }
     const send = message => message.type === 'debugInfo'
       ? page.evaluate(requestID => FormFillCapturePage(requestID), message.requestID ?? null)
@@ -132,17 +134,20 @@ const path = require('node:path');
     const popup = await browser.newPage();
     await popup.setContent(fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/popup.html'), 'utf8').replace(/<script.*?<\/script>/gs, ''));
     await popup.exposeFunction('sendToTarget', send);
+    await popup.exposeFunction('captureDetailedTarget', () => page.evaluate(() => FormFillCaptureDeveloperPage()));
     await popup.exposeFunction('captureTarget', requestID => send({ type: 'debugInfo', requestID }));
     await popup.evaluate(values => {
       let fields;
       window.browser = {
         tabs: { query: async () => [{ id: 5, url: 'https://fixture.example/form' }], sendMessage: async (_, message) => sendToTarget(message) },
-        scripting: { executeScript: async options => options.func ? [{ frameId: 0, result: await captureTarget(options.args[0]) }] : [] },
+        scripting: { executeScript: async options => options.func ? [{ frameId: 0, result: await (options.args ? captureTarget(options.args[0]) : captureDetailedTarget()) }] : [] },
         runtime: { getManifest: () => ({ version: '0.1.0' }), sendMessage: async message => {
+          if (message.type === 'saveDeveloperReport') { window.savedDeveloperReport = message.report; return { version: 1, ok: true }; }
           if (message.type === 'cancelFill') return { ok: true };
           if (message.type === 'analyzeForm') {
             fields = message.fields;
             return { version: 1, ok: true, requestID: message.requestID, sessionID: 'session',
+              developerDiagnostics: message.developerDiagnostics ? {trace: [{message: 'synthetic model prompt/output'}]} : undefined,
               classifications: fields.map(field => ({ id: field.id, kind: 'family', label: field.label })) };
           }
           const items = fields.map((field, i) => ({ id: field.id, label: field.label, value: values[i], displayValue: values[i], source: 'rule', overwritesExisting: field.occupied }));
@@ -153,8 +158,11 @@ const path = require('node:path');
     }, values);
     await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/debug-info.js'), 'utf8') });
     await popup.addScriptTag({ content: captureSource });
+    await popup.addScriptTag({ content: developerSource });
+    await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/developer-ui.js'), 'utf8') });
     await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/popup.js'), 'utf8') });
     await popup.locator('summary').click();
+    await popup.locator('#developer-record').check();
     await popup.locator('#analyze').click();
     await popup.locator('#unlock:not([disabled])').waitFor();
     assert.equal((await popup.locator('#plan').textContent()).includes('山田'), false);
@@ -176,14 +184,22 @@ const path = require('node:path');
     assert.equal(debugReport.currentPageURL.url, 'https://fixture.example/form');
     assert.equal(debugReport.summary.analysis, '解析完了');
     assert.equal(debugReport.summary.overwriteFields, 1);
-    for (const value of values) assert.equal(JSON.stringify(debugReport).includes(value), false);
+    for (const value of values) assert.equal(JSON.stringify(debugReport).includes(JSON.stringify(value)), false, `unexpected literal value: ${value}`);
     await popup.locator('#fill').click();
     await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('9欄に入力しました'));
     assert.deepEqual(await page.locator('input:not([type]),select').evaluateAll(nodes => nodes.map(node => node.value)), values);
     assert.equal(await popup.locator('#plan li').count(), 0);
-    assert.equal(await popup.locator('#save-developer, #developer-record').count(), 0);
+    await popup.locator('#save-developer').click();
+    await popup.waitForFunction(() => !document.querySelector('#save-developer').disabled);
+    const rawReport = JSON.parse(await popup.evaluate(() => window.savedDeveloperReport));
+    assert.equal(rawReport.page.lastRun.analysis.response.developerDiagnostics.trace[0].message, 'synthetic model prompt/output');
+    assert.equal(rawReport.page.lastRun.fill.after[0].value, '山田');
+    assert.equal(rawReport.page.lastRun.analysisPage.documents[0].controls[0].value, '元の姓');
+    assert.ok(rawReport.page.lastRun.fill.events.some(e => e.stage === 'after_input_event'));
+    // The native boundary is separately tested to mask this in-memory report before persistence.
+
     await popup.close();
-    assert.equal(await page.evaluate(() => __formFillContentHandler.developerRecord()), null);
+    assert.equal((await page.evaluate(() => __formFillContentHandler.developerRecord())).fill.after[0].value, '山田');
     // Secrets can occur in any DOM string, including labels and option metadata.
     const secret = 'PRIVATE-person-address-token';
     await load(`<label>${secret}<input id="${secret}" name="${secret}" value="${secret}" placeholder="${secret}" aria-label="${secret}" pattern="${secret}" autocomplete="section-${secret} name"></label>
@@ -196,13 +212,15 @@ const path = require('node:path');
     assert.equal(debug.iframeCount, 1);
     assert.equal(debug.fields[2].optionCount, 1);
     assert.equal(await page.locator('textarea').inputValue(), secret);
-    // Raw capture flags cannot retain initial values or native responses.
+    // Opted-in records retain raw inputs in memory; a normal extraction clears them.
     extracted = await send({ type: 'extract', developerDiagnostics: true });
-    assert.equal(await page.evaluate(() => __formFillContentHandler.developerRecord()), null);
+    assert.equal((await page.evaluate(() => __formFillContentHandler.developerRecord())).fields[0].initialValue, secret);
     await send({ type: 'discardSnapshot', requestID: 'unrelated' });
     assert.equal((await send({ type: 'validateSnapshot', requestID: extracted.requestID })).ok, true);
     await send({ type: 'discardSnapshot', requestID: extracted.requestID });
     assert.equal((await send({ type: 'validateSnapshot', requestID: extracted.requestID })).ok, false);
+    await send({ type: 'extract' });
+    assert.equal(await page.evaluate(() => __formFillContentHandler.developerRecord()), null);
     await load(fs.readFileSync(path.join(__dirname, '../../Fixtures/numbered-address.html'), 'utf8'));
     extracted = await send({ type: 'extract' });
     assert.equal(extracted.fields.length, 4);

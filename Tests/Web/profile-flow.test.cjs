@@ -18,7 +18,7 @@ function harness() {
       return message.type === 'validateSnapshot' ? { ok: h.valid } : { ok: true, results: [{ id: 'f0', status: 'filled' }] };
     } }
   };
-  vm.runInNewContext(fs.readFileSync(`${__dirname}/../../SafariExtension/Resources/background.js`, 'utf8'), { browser, URL });
+  vm.runInNewContext(fs.readFileSync(`${__dirname}/../../SafariExtension/Resources/background.js`, 'utf8'), { browser, URL, TextEncoder });
   h.sender = { id: 'extension', url: browser.runtime.getURL('popup.html') };
   h.send = message => h.listener(message, h.sender);
   h.message = { type: 'analyzeForm', tabID: 5, requestID: 'request', fields: [{ id: 'f0', label: '姓', value: 'private', options: [] }] };
@@ -30,7 +30,7 @@ test('only the exact extension popup can request native services', async () => {
     { ...h.sender, url: 'https://example.test/popup.html' }, { ...h.sender, url: 'safari-web-extension://test/other.html' }]) {
     assert.equal((await h.listener(h.message, sender)).error, 'unsupported_request');
   }
-  for (const type of ['saveDeveloperReport', 'analyzeInline', 'getProfile'])
+  for (const type of ['analyzeInline', 'getProfile'])
     assert.equal((await h.send({ ...h.message, type })).error, 'unsupported_request');
   assert.equal(h.requests.length, 0);
   await h.send({ type: 'health', value: 'private' });
@@ -41,7 +41,7 @@ test('analysis binds browser scope and drops values, raw tracing and claimed ori
   await h.send({ ...h.message, origin: 'https://forged.test', developerDiagnostics: true, url: 'private' });
   assert.equal(h.requests[0].origin, 'https://example.test');
   assert.equal(JSON.stringify(h.requests).includes('private'), false);
-  assert.equal(h.requests[0].developerDiagnostics, undefined);
+  assert.equal(h.requests[0].developerDiagnostics, true);
   h.tab.url = 'http://example.test/form';
   assert.equal((await h.send(h.message)).error, 'https_required');
   h.tab.url = 'https://example.test/form'; h.valid = false;
@@ -61,4 +61,13 @@ test('navigation during authentication cancels disclosure and does not fill', as
   h.onNative = async message => { if (message.type === 'commitFill') h.tab = { id: 6, url: 'https://attacker.test/' }; };
   assert.equal((await h.send({ ...h.message, type: 'commitFill', sessionID: 'session' })).error, 'stale_plan');
   assert.equal(h.page.some(entry => entry.message.type === 'applyFill'), false);
+});
+
+test('detailed report only forwards from popup and enforces size/type', async () => {
+  const h = harness();
+  assert.equal((await h.send({type: 'saveDeveloperReport', report: {raw: true}})).error, 'report_too_large');
+  assert.equal(h.requests.length, 0);
+  await h.send({type: 'saveDeveloperReport', report: '{"test":"raw memory only"}'});
+  assert.equal(h.requests[0].type, 'saveDeveloperReport');
+  assert.equal(h.requests[0].version, 1);
 });

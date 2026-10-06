@@ -1,7 +1,4 @@
 import { build } from 'esbuild';
-import { rm } from 'node:fs/promises';
-// Remove outputs of the retired raw-capture tools so Xcode cannot package stale files.
-await Promise.all(['developer-ui.js', 'developer-page.js'].map(name => rm(`SafariExtension/Resources/${name}`, { force: true })));
 // Safari consumes classic scripts; keep entry points isolated and dependency-free at runtime.
 await build({
   entryPoints: {
@@ -9,6 +6,8 @@ await build({
     content: 'SafariExtension/Source/content/index.ts',
     popup: 'SafariExtension/Source/popup/index.ts',
     'debug-info': 'SafariExtension/Source/diagnostics/report.ts',
+    'developer-ui': 'SafariExtension/Source/popup/developer.ts',
+    'developer-page': 'SafariExtension/Source/diagnostics/developer-page.ts',
     'debug-page': 'SafariExtension/Source/diagnostics/page.ts'
   },
   outdir: 'SafariExtension/Resources', bundle: true, format: 'iife',

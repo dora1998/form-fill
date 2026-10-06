@@ -9,7 +9,7 @@ saveDeveloperButton.addEventListener('click', async () => {
     try {
         const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
         report.currentPageURL = tab?.url;
-        if (!tab?.id)
+        if (tab?.id == null)
             throw Error('no_tab');
         const results = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: FormFillCaptureDeveloperPage });
         report.page = results?.[0]?.result;
@@ -28,10 +28,11 @@ saveDeveloperButton.addEventListener('click', async () => {
         if (result?.version !== 1 || result.ok !== true) {
             developerStatus.textContent = result?.error === 'report_too_large'
                 ? 'データが20 MiBを超えるため保存できませんでした。入力欄の少ないページで再試行してください。'
+                : result?.error === 'authentication_failed' ? '認証が完了しなかったため保存していません。再試行してください。'
                 : 'アプリに保存できませんでした。アプリと拡張のApp Groups設定・端末の空き容量を確認して再試行してください。';
             return;
         }
-        developerStatus.textContent = `アプリに保存しました。Form Fillアプリの「保存したデバッグログ」からファイルに保存・共有・削除できます。${note}`;
+        developerStatus.textContent = `登録プロフィールをマスキングしてアプリに保存しました。Form Fillアプリの「保存したデバッグログ」からファイルに保存・共有・削除できます。${note}`;
     }
     catch {
         developerStatus.textContent = '開発用データの作成・アプリへの保存に失敗しました。再試行してください。';

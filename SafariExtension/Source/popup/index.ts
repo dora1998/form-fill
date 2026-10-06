@@ -42,6 +42,10 @@ const cancel = (saved: Session) => {
     void browser.runtime.sendMessage({ type: 'cancelFill', ...saved }).catch(() => {});
     void browser.tabs.sendMessage(saved.tabID, { type: 'discardSnapshot', requestID: saved.requestID }).catch(() => {});
 };
+const recordPhase = async (saved: Session, phase: string, result: unknown) => {
+    try { await browser.tabs.sendMessage(saved.tabID, { type: 'saveDeveloperAnalysis', requestID: saved.requestID,
+        analysis: { [phase]: result } }); } catch { /* Only opted-in content retains this record. */ }
+};
 const clear = () => {
     generation++;
     clearTimeout(expiry);
@@ -62,6 +66,13 @@ const fail = (error: unknown) => {
 analyzeButton.addEventListener('click', async () => {
     clear();
     const token = generation;
+    const detailed = document.querySelector<HTMLInputElement>('#developer-record')?.checked === true;
+    let developerTabID: number | undefined;
+    const saveDeveloper = async (analysis: DiagnosticRecord, page?: unknown) => {
+        if (!detailed || developerTabID == null || !debugRequestID) return;
+        try { await browser.tabs.sendMessage(developerTabID, { type: 'saveDeveloperAnalysis', requestID: debugRequestID, analysis, page }); }
+        catch { /* Diagnostic failure must not affect filling. */ }
+    };
     lastAnalysis = FormFillDebug.analysis('running');
     debugRequestID = undefined;
     debugFields = [];
@@ -73,19 +84,27 @@ analyzeButton.addEventListener('click', async () => {
         if (tab?.id == null || !tab.url) throw new Error('no_tab');
         const url = new URL(tab.url);
         if (url.protocol !== 'https:') throw new Error('https_required');
+        developerTabID = tab.id;
         debugAnalysisURL = FormFillDebug.pageURL(tab.url).url;
         await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-        const extracted: Extraction = await browser.tabs.sendMessage(tab.id, { type: 'extract' });
+        const extracted: Extraction = await browser.tabs.sendMessage(tab.id, { type: 'extract', developerDiagnostics: detailed });
         if (token !== generation) return;
         debugRequestID = extracted.requestID;
         debugFields = FormFillDebug.fieldMetadata(extracted.fields);
+        if (detailed) {
+            try {
+                const pages = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: FormFillCaptureDeveloperPage });
+                await saveDeveloper({ status: 'extracted', extracted }, pages?.[0]?.result);
+            } catch (error) { await saveDeveloper({ captureError: String(error) }); }
+        }
         if (!extracted.fields.length) {
             lastAnalysis = FormFillDebug.analysis('no_fields');
             fillStatus.textContent = '対象の入力欄がありません。';
             return;
         }
         const result: AnalysisResult = await withTimeout(browser.runtime.sendMessage({ type: 'analyzeForm', tabID: tab.id,
-            requestID: extracted.requestID, fields: extracted.fields }));
+            requestID: extracted.requestID, fields: extracted.fields, developerDiagnostics: detailed }));
+        await saveDeveloper({ status: 'completed', response: result });
         const saved = { tabID: tab.id, origin: url.origin, requestID: extracted.requestID, sessionID: result.sessionID ?? '' };
         if (token !== generation) { if (saved.sessionID) cancel(saved); return; }
         if (result.error === 'model_unavailable') {
@@ -103,6 +122,7 @@ analyzeButton.addEventListener('click', async () => {
         fillStatus.textContent = '入力先を確認して「登録情報を確認する」を押してください。まだ住所は読み出していません。';
         expiry = setTimeout(() => { clear(); fillStatus.textContent = errorMessages.stale_plan; }, 120000);
     } catch (error) {
+        await saveDeveloper({ status: 'failed', error: String(error) });
         if (token === generation) { lastAnalysis = FormFillDebug.analysis('failed'); fail(error); }
     } finally { if (token === generation || !session) analyzeButton.disabled = false; }
 });
@@ -115,6 +135,8 @@ unlockButton.addEventListener('click', async () => {
     fillStatus.textContent = '認証して登録情報を読み出しています…';
     try {
         const result = await withTimeout(browser.runtime.sendMessage({ type: 'prepareFill', ...saved }));
+        await recordPhase(saved, 'prepare', { ok: result.ok, error: result.error,
+            items: result.items?.map((item: { id: string; kind?: string }) => ({ id: item.id, kind: item.kind })), skipped: result.skipped });
         if (token !== generation) return;
         if (!result.ok || !Array.isArray(result.items) || !Array.isArray(result.skipped)) throw new Error(result.error ?? 'invalid_response');
         lastAnalysis = FormFillDebug.analysis('success', result); // allowlisted summary, never retains values
@@ -125,7 +147,7 @@ unlockButton.addEventListener('click', async () => {
         fillStatus.textContent = `${result.items.length}欄を入力予定。入力した瞬間からサイトは値を読み取れます。入力時にも認証します。`;
         clearTimeout(expiry);
         expiry = setTimeout(() => { clear(); fillStatus.textContent = errorMessages.stale_plan; }, 60000);
-    } catch (error) { if (token === generation) fail(error); }
+    } catch (error) { await recordPhase(saved, 'error', String(error)); if (token === generation) fail(error); }
     finally { analyzeButton.disabled = false; }
 });
 fillButton.addEventListener('click', async () => {
@@ -139,12 +161,13 @@ fillButton.addEventListener('click', async () => {
     fillStatus.textContent = '認証と入力先を再確認しています…';
     try {
         const result = await withTimeout(browser.runtime.sendMessage({ type: 'commitFill', ...saved }));
+        await recordPhase(saved, 'commit', result);
         if (token !== generation) return;
         if (!result.ok || !Array.isArray(result.results)) throw new Error(result.error ?? 'stale_plan');
         const filled = result.results.filter(item => item.status === 'filled').length;
         clear();
         fillStatus.textContent = `${filled}欄に入力しました。${result.results.length - filled}欄は保留しました。ページ上の値を確認してください。フォームは送信していません。`;
-    } catch (error) { if (token === generation) fail(error); }
+    } catch (error) { await recordPhase(saved, 'error', String(error)); if (token === generation) fail(error); }
     finally { analyzeButton.disabled = false; }
 });
 window.addEventListener('pagehide', clear);
