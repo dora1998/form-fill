@@ -6,6 +6,15 @@ const native = (message: unknown) => browser.runtime.sendNativeMessage('dev.form
 // Only our packaged popup may request registered data. Page/content messages,
 // including the former one-step inline path, are rejected.
 browser.runtime.onMessage.addListener(async (payload: unknown, sender: Sender) => {
+    // Content may open the trusted popup, but cannot request any native service.
+    if (payload && typeof payload === 'object' && (payload as Record<string, unknown>).type === 'openFillPopup') {
+        if (sender.id !== browser.runtime.id || sender.tab?.id == null || sender.frameId !== 0
+            || !sender.url || !/^https:\/\//.test(sender.url)) return failure('unsupported_request');
+        try {
+            await browser.action.openPopup();
+            return { version: 1, ok: true };
+        } catch { return failure('popup_unavailable'); }
+    }
     if (sender.id !== browser.runtime.id || sender.tab || sender.url !== browser.runtime.getURL('popup.html')
         || !payload || typeof payload !== 'object') return failure('unsupported_request');
     const message = payload as Record<string, unknown>;

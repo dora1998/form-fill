@@ -13,6 +13,7 @@ function harness() {
         return { version: 1, ok: true, requestID: message.requestID, sessionID: 'session',
           items: [{ id: 'f0', kind: 'family', value: '合成テスト', displayValue: '合成テスト' }], skipped: [] };
       } },
+    action: { openPopup: async () => { h.opened = (h.opened || 0) + 1; if (h.popupError) throw Error('unavailable'); } },
     tabs: { query: async () => [h.tab], sendMessage: async (id, message) => {
       h.page.push({ id, message });
       return message.type === 'validateSnapshot' ? { ok: h.valid } : { ok: true, results: [{ id: 'f0', status: 'filled' }] };
@@ -70,4 +71,20 @@ test('detailed report only forwards from popup and enforces size/type', async ()
   await h.send({type: 'saveDeveloperReport', report: '{"test":"raw memory only"}'});
   assert.equal(h.requests[0].type, 'saveDeveloperReport');
   assert.equal(h.requests[0].version, 1);
+});
+
+test('inline entry opens trusted popup without requesting native values', async () => {
+  const h = harness();
+  const sender = { id: 'extension', tab: { id: 5 }, frameId: 0, url: h.tab.url };
+  for (const invalid of [{ ...sender, id: 'other' }, { ...sender, frameId: 1 },
+    { ...sender, tab: undefined }, { ...sender, url: 'http://example.test/form' }])
+    assert.equal((await h.listener({ type: 'openFillPopup' }, invalid)).error, 'unsupported_request');
+  assert.equal(h.opened, undefined);
+  assert.equal((await h.listener({ type: 'openFillPopup', fields: ['forged'] }, sender)).ok, true);
+  assert.equal(h.opened, 1);
+  assert.deepEqual(h.requests, []);
+  assert.deepEqual(h.page, []);
+  assert.equal((await h.listener({ ...h.message, type: 'prepareFill' }, sender)).error, 'unsupported_request');
+  h.popupError = true;
+  assert.equal((await h.listener({ type: 'openFillPopup' }, sender)).error, 'popup_unavailable');
 });

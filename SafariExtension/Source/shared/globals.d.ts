@@ -1,6 +1,7 @@
 import type { PageRequest, Sender, Control, DiagnosticRecord, Extraction, FillRequest, FillResponse, AnalysisResult, FormField } from './contracts';
 declare global {
     const browser: {
+        action: { openPopup(): Promise<void> };
         runtime: {
             id: string;
             getURL(path: string): string;
@@ -8,9 +9,10 @@ declare global {
                 addListener<T>(listener: (message: T, sender: Sender) => unknown): void;
                 removeListener<T>(listener: (message: T, sender: Sender) => unknown): void;
             };
+            sendMessage(message: { type: 'openFillPopup' }): Promise<{ version: number; ok: boolean; error?: string }>;
             sendMessage(message: { type: 'prepareFill' | 'commitFill' | 'cancelFill'; requestID: string; sessionID: string; tabID: number; origin: string }): Promise<AnalysisResult & FillResponse>;
             sendMessage(message: {
-                type: 'analyzeForm' | 'analyzeInline';
+                type: 'analyzeForm';
                 tabID?: number;
                 requestID: string;
                 fields: FormField[];
