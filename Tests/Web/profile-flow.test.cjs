@@ -11,18 +11,19 @@ function harness() {
         h.requests.push(message);
         if (h.onNative) await h.onNative(message);
         return { version: 1, ok: true, requestID: message.requestID, sessionID: 'session',
-          items: [{ id: 'f0', kind: 'family', value: '合成テスト', displayValue: '合成テスト' }], skipped: [] };
+          classifications: [{ id: 'f0', kind: 'family', components: [], source: 'rule', label: '姓' }],
+          items: [{ id: 'f0', kind: 'family', label: '姓', value: '合成テスト', displayValue: '合成テスト' }], skipped: [] };
       } },
     action: { openPopup: async () => { h.opened = (h.opened || 0) + 1; if (h.popupError) throw Error('unavailable'); if (h.waitPopup) await h.waitPopup; } },
     tabs: { query: async () => [h.tab], sendMessage: async (id, message) => {
       h.page.push({ id, message });
-      return message.type === 'validateSnapshot' ? { ok: h.valid } : { ok: true, results: [{ id: 'f0', status: 'filled' }] };
+      return message.type === 'validateSnapshot' ? { ok: h.valid } : { version: 1, ok: true, results: [{ id: 'f0', status: 'filled' }] };
     } }
   };
   vm.runInNewContext(fs.readFileSync(`${__dirname}/../../SafariExtension/Resources/background.js`, 'utf8'), { browser, URL, TextEncoder, Date: { now: () => h.now ?? 0 } });
   h.sender = { id: 'extension', url: browser.runtime.getURL('popup.html') };
   h.send = message => h.listener(message, h.sender);
-  h.message = { type: 'analyzeForm', tabID: 5, requestID: 'request', fields: [{ id: 'f0', label: '姓', value: 'private', options: [] }] };
+  h.message = { type: 'analyzeForm', tabID: 5, requestID: '11111111-1111-4111-8111-111111111111', fields: [{ ...require('../Contracts/analyze-requests.json')[0].request.fields[0], value: 'private' }] };
   return h;
 }
 test('only the exact extension popup can request native services', async () => {

@@ -8,16 +8,15 @@ settings:
     SWIFT_VERSION: '5.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     CODE_SIGN_STYLE: Automatic
+packages:
+  FormFillKit:
+    path: Packages/FormFillKit
 targets:
   FormFill:
     type: application
     platform: iOS
     sources:
       - App
-      - Shared/DebugReportStore.swift
-      - Shared/FillPlan.swift
-      - Shared/Profile.swift
-      - Shared/ProfileRepository.swift
     info:
       path: App/Info.plist
       properties:
@@ -46,6 +45,12 @@ targets:
         com.apple.security.application-groups: [group.dev.formfill.app]
         keychain-access-groups: [$(AppIdentifierPrefix)dev.formfill.profiles]
     dependencies:
+      - package: FormFillKit
+        product: FormFillCore
+      - package: FormFillKit
+        product: FormFillApplication
+      - package: FormFillKit
+        product: FormFillApple
       - target: FormFillExtension
         embed: true
   FormFillExtension:
@@ -54,7 +59,6 @@ targets:
     sources:
       - path: SafariExtension
         excludes: [Resources, Source]
-      - Shared
       - path: SafariExtension/Resources
         buildPhase: resources
     info:
@@ -81,6 +85,14 @@ targets:
         com.apple.security.application-groups: [group.dev.formfill.app]
         keychain-access-groups: [$(AppIdentifierPrefix)dev.formfill.profiles]
     dependencies:
+      - package: FormFillKit
+        product: FormFillCore
+      - package: FormFillKit
+        product: FormFillApplication
+      - package: FormFillKit
+        product: FormFillApple
+      - package: FormFillKit
+        product: FormFillBridge
       - sdk: SafariServices.framework
 schemes:
   FormFill:

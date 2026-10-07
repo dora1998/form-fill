@@ -1,4 +1,5 @@
-import type { PageRequest, Sender, Control, DiagnosticRecord, Extraction, FillRequest, FillResponse, AnalysisResult, FormField } from './contracts';
+import type { Control } from '../content/types';
+import type { PageRequest, Sender, DiagnosticRecord, RequestMap, ResponseMap, PageResponseMap } from './contracts';
 declare global {
     const browser: {
         action: { openPopup(): Promise<void> };
@@ -9,28 +10,7 @@ declare global {
                 addListener<T>(listener: (message: T, sender: Sender) => unknown): void;
                 removeListener<T>(listener: (message: T, sender: Sender) => unknown): void;
             };
-            sendMessage(message: { type: 'consumeInlineStart' }): Promise<{ version: number; ok: boolean; error?: string; tabID?: number; url?: string }>;
-            sendMessage(message: { type: 'openFillPopup' }): Promise<{ version: number; ok: boolean; error?: string }>;
-            sendMessage(message: { type: 'prepareFill' | 'commitFill' | 'quickFill' | 'cancelFill'; requestID: string; sessionID: string; tabID: number; origin: string }): Promise<AnalysisResult & FillResponse>;
-            sendMessage(message: {
-                type: 'analyzeForm';
-                tabID?: number;
-                requestID: string;
-                fields: FormField[];
-                developerDiagnostics?: boolean;
-            }): Promise<AnalysisResult>;
-            sendMessage(message: {
-                type: 'health' | 'modelProbe' | 'saveDeveloperReport';
-                report?: string;
-            }): Promise<{
-                version: number;
-                ok: boolean;
-                error?: string;
-                available?: boolean;
-                reason?: string;
-                process?: string;
-                result?: string;
-            }>;
+            sendMessage<R extends RequestMap[keyof RequestMap]>(message: R): Promise<ResponseMap[R['type']]>;
             sendNativeMessage(app: string, message: unknown): Promise<unknown>;
             getManifest(): {
                 version: string;
@@ -44,26 +24,7 @@ declare global {
                 id?: number;
                 url?: string;
             }[]>;
-            sendMessage(tabID: number, message: { type: 'validateSnapshot' | 'discardSnapshot'; requestID: string }): Promise<{ version: number; ok: boolean }>;
-            sendMessage(tabID: number, message: {
-                type: 'extract';
-                groupID?: string;
-                selectionRequestID?: string;
-                inlineTarget?: boolean;
-                developerDiagnostics?: boolean;
-            }): Promise<Extraction>;
-            sendMessage(tabID: number, message: FillRequest): Promise<FillResponse>;
-            sendMessage(tabID: number, message: {
-                type: 'inspect';
-            }): Promise<{
-                version: number;
-                fieldCount: number;
-            }>;
-            sendMessage(tabID: number, message: Extract<PageRequest, {
-                type: 'saveDeveloperAnalysis';
-            }>): Promise<{
-                ok: boolean;
-            }>;
+            sendMessage<R extends PageRequest>(tabID: number, message: R): Promise<PageResponseMap[R['type']]>;
         };
         scripting: {
             executeScript(options: {
@@ -81,9 +42,11 @@ declare global {
         version: number;
         listener: (message: PageRequest, sender: Sender) => unknown;
         disposeInline?: () => void;
+        dispose?: () => void;
+        fieldID?(requestID: string, element: Control): string | null;
         developerFieldID(element: Control): string | null;
         developerRecord(): DiagnosticRecord | null;
-        matchesSnapshot(requestID: string, all: Control[]): boolean;
+        matchesSnapshot(requestID: string): boolean;
     } | undefined;
     var FormFillDebug: typeof import('../diagnostics/report').debugUtilities;
     var FormFillCapturePage: typeof import('../diagnostics/page').capturePage;

@@ -1,3 +1,4 @@
+import { skipReasonCodes } from '../shared/contracts';
 import type { DiagnosticRecord } from '../shared/contracts';
 /* Clipboard boundary: rebuild metadata from allowed codes, numbers and booleans.
  * URLs are separately minimized. Never spread page/native objects here. */
@@ -135,7 +136,8 @@ export const debugUtilities = (() => {
         skipped: (Array.isArray(result.skipped) ? result.skipped : []).slice(0, 40).map((item: DiagnosticRecord) => ({
             id: fieldID(item?.id), kind: code(item?.kind, kinds), components: safeComponents(item?.components),
             source: code(item?.source, ['rule', 'model', 'not_classified_existing_input', 'unclassified']),
-            reason: Object.hasOwn(reasons, item?.reason) ? reasons[item.reason] : 'unknown'
+            reason: skipReasonCodes.includes(item?.reasonCode)
+                ? item.reasonCode : Object.hasOwn(reasons, item?.reason) ? reasons[item.reason] : 'unknown'
         }))
     });
     const summary = (result: ReturnType<typeof analysis>, captureStatus: string) => ({
@@ -221,8 +223,7 @@ export const debugUtilities = (() => {
         lastAnalysis: analysis(lastAnalysis?.status, lastAnalysis)
     });
     // analysis() already converts localized reasons; allow its safe codes on rebuilding.
-    for (const value of Object.values(reasons))
+    for (const value of [...Object.values(reasons), ...skipReasonCodes])
         reasons[value] = value;
     return { analysis, report, fieldMetadata, pageURL };
 })();
-globalThis.FormFillDebug = debugUtilities;

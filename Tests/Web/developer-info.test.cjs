@@ -7,7 +7,9 @@ test('explicit detailed capture is packaged without automatic console tracing', 
   const html = fs.readFileSync(`${root}SafariExtension/Resources/popup.html`, 'utf8');
   assert.doesNotMatch(html, /id="developer-record"/);
   assert.match(html, /id="save-developer"/);
-  const classifier = fs.readFileSync(`${root}SafariExtension/FormClassifier.swift`, 'utf8');
+  const classifier = fs.readFileSync(`${root}Packages/FormFillKit/Sources/FormFillApple/Models/FoundationModelsClient.swift`, 'utf8');
   assert.doesNotMatch(classifier, /print\(|Logger\(/);
-  assert.match(classifier, /if detailed/);
+  const service = fs.readFileSync(`${root}Packages/FormFillKit/Sources/FormFillApplication/Classification/ClassificationService.swift`, 'utf8');
+  assert.doesNotMatch(service, /print\(|Logger\(/);
+  assert.match(service, /if detailed/);
 });

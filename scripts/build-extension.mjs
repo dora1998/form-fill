@@ -5,10 +5,10 @@ await build({
     background: 'SafariExtension/Source/background.ts',
     content: 'SafariExtension/Source/content/index.ts',
     popup: 'SafariExtension/Source/popup/index.ts',
-    'debug-info': 'SafariExtension/Source/diagnostics/report.ts',
+    'debug-info': 'SafariExtension/Source/diagnostics/report-entry.ts',
     'developer-ui': 'SafariExtension/Source/popup/developer.ts',
-    'developer-page': 'SafariExtension/Source/diagnostics/developer-page.ts',
-    'debug-page': 'SafariExtension/Source/diagnostics/page.ts'
+    'developer-page': 'SafariExtension/Source/diagnostics/developer-entry.ts',
+    'debug-page': 'SafariExtension/Source/diagnostics/page-entry.ts'
   },
   outdir: 'SafariExtension/Resources', bundle: true, format: 'iife',
   target: 'safari26', charset: 'utf8', legalComments: 'none',

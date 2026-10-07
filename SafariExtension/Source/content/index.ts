@@ -1,43 +1,36 @@
+import type { Entry, Control } from './types';
 import { installInline } from './inline';
 import { candidates, metadata, groupIDs, fieldLabel } from './fields';
 import { newRequestID } from '../shared/request-id';
 import { createApply } from './apply';
-import { unchanged } from './snapshot';
-import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction, Control } from '../shared/contracts';
+import { createSnapshotSession, snapshotUnchanged } from './snapshot';
+import type { DiagnosticRecord, PageRequest, Sender, Extraction } from '../shared/contracts';
 (() => {
     const installed = globalThis.__formFillContentHandler;
-    if (installed?.version === 16) return;
+    if (installed?.version === 17) return;
     if (installed) {
-        browser.runtime.onMessage.removeListener(installed.listener);
-        installed.disposeInline?.();
+        if (installed.dispose) installed.dispose();
+        else { browser.runtime.onMessage.removeListener(installed.listener); installed.disposeInline?.(); }
     } else if (globalThis.__formFillDiagnosticsInstalled) return;
     globalThis.__formFillDiagnosticsInstalled = true;
     let inlineTarget: Control | undefined;
-    let snapshot: Snapshot | undefined;
-    let expires = 0;
+    const snapshots = createSnapshotSession({ url: () => location.href, visible: () => document.visibilityState !== 'hidden',
+        now: () => performance.now(), validate: snapshotUnchanged });
     let developerRecord: DiagnosticRecord | undefined;
     let developerEntries: Entry[] = [];
-    const clear = () => { snapshot = undefined; expires = 0; };
-    const matches = (id: string) => Boolean(snapshot && snapshot.requestID === id && snapshot.url === location.href
-        && performance.now() < expires && document.visibilityState !== 'hidden'
-        && snapshot.entries.every(entry => unchanged(entry) && entry.element.value === entry.initialValue)
-        && candidates().length === snapshot.all.length
-        && candidates().every((element, index) => element === snapshot!.all[index]));
     const apply = createApply(() => {
-        const saved = snapshot && matches(snapshot.requestID) && location.protocol === 'https:' ? snapshot : undefined;
-        clear();
-        return saved;
+        const saved = snapshots.take();
+        return location.protocol === 'https:' ? saved : undefined;
     }, () => developerRecord);
     const extract = (detailed = false, groupID?: string, fromInline = false): Extraction => {
         const all = candidates();
-        const groups = groupIDs();
+        const groups = groupIDs(all);
         const targetGroup = fromInline ? inlineTarget && groups.get(inlineTarget) : groupID;
         if (fromInline) inlineTarget = undefined;
         const selected = fromInline || groupID ? all.filter(element => targetGroup && groups.get(element) === targetGroup) : all;
         const requestID = newRequestID();
         const entries = selected.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
-        snapshot = { requestID, entries, all, url: location.href };
-        expires = performance.now() + 180_000;
+        snapshots.create({ requestID, entries, all, url: location.href });
         developerEntries = detailed ? entries : [];
         developerRecord = detailed ? { requestID, url: location.href, capturedAt: new Date().toISOString(),
             fields: entries.map(entry => ({ ...entry.field, initialValue: entry.initialValue })),
@@ -62,20 +55,24 @@ import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction
             return Promise.resolve({ ok: true });
         }
         if (message?.type === 'inspect') return Promise.resolve({ version: 1, fieldCount: candidates().length });
-        if (message?.type === 'validateSnapshot') return Promise.resolve({ version: 1, ok: matches(message.requestID) });
-        if (message?.type === 'discardSnapshot') { if (snapshot?.requestID === message.requestID) clear(); return Promise.resolve({ version: 1, ok: true }); }
+        if (message?.type === 'validateSnapshot') return Promise.resolve({ version: 1, ok: snapshots.matches(message.requestID) });
+        if (message?.type === 'discardSnapshot') { snapshots.discard(message.requestID); return Promise.resolve({ version: 1, ok: true }); }
         if (message?.type === 'extract') {
-            if (message.groupID && (!message.selectionRequestID || !matches(message.selectionRequestID)))
+            if (message.groupID && (!message.selectionRequestID || !snapshots.matches(message.selectionRequestID)))
                 return Promise.reject(new Error('stale_plan'));
             return Promise.resolve(extract(message.developerDiagnostics === true, message.groupID, message.inlineTarget === true));
         }
         if (message?.type === 'applyFill') return apply(message);
     };
-    window.addEventListener('pagehide', () => { clear(); developerRecord = undefined; developerEntries = []; });
+    const pagehide = () => { snapshots.discard(); developerRecord = undefined; developerEntries = []; };
+    window.addEventListener('pagehide', pagehide);
     browser.runtime.onMessage.addListener(listener);
-    globalThis.__formFillContentHandler = { version: 16, listener, disposeInline: installInline(target => { inlineTarget = target; }),
+    const disposeInline = installInline(target => { inlineTarget = target; });
+    globalThis.__formFillContentHandler = { version: 17, listener, disposeInline,
+        dispose: () => { pagehide(); disposeInline(); browser.runtime.onMessage.removeListener(listener); window.removeEventListener('pagehide', pagehide); },
+        fieldID: snapshots.fieldID,
         developerFieldID: element => developerRecord?.url === location.href ? developerEntries.find(entry => entry.element === element)?.field.id ?? null : null,
         developerRecord: () => developerRecord?.url === location.href ? developerRecord : null,
-        matchesSnapshot: (id) => matches(id)
+        matchesSnapshot: snapshots.matches
     };
 })();
