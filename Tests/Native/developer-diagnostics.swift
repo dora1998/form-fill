@@ -2,6 +2,27 @@ import Foundation
 
 @main struct DeveloperDiagnosticsCheck {
     static func main() async {
+        let address = ClassifiedField(kind: "address", components: ["municipality", "locality"])
+        precondition(FormClassifier.outputIssues([address], expectedIDs: ["f7"]).isEmpty)
+        precondition(FormClassifier.outputIssues([address, address], expectedIDs: ["f7"]) == ["count_mismatch"])
+        precondition(FormClassifier.outputIssues([], expectedIDs: ["f7"]) == ["count_mismatch"])
+        for entry in [ClassifiedField(kind: "address", components: []),
+                      ClassifiedField(kind: "address", components: ["street", "street"]),
+                      ClassifiedField(kind: "family", components: ["street"])] {
+            precondition(FormClassifier.outputIssues([entry], expectedIDs: ["f7"]) == ["invalid_components"])
+        }
+        func field(_ index: Int, _ group: String) -> FormField {
+            FormField(id: "f\(index)", groupID: group, tag: "input", type: "text", label: "住所", ariaLabel: "",
+                name: "", htmlID: "", placeholder: "", autocomplete: "", context: "", maxLength: 0,
+                pattern: "", occupied: false, options: [])
+        }
+        let fields = (0..<10).map { field($0, $0 < 5 ? "g0" : "g1") }
+        let context = FormClassifier.modelContextFields(fields, requestedIDs: ["f0", "f5"])
+        precondition(context.count == 6 && context.allSatisfy { !["f0", "f5"].contains($0.id) })
+        precondition(context.filter { $0.groupID == "g0" }.count == 3)
+        precondition(context.filter { $0.groupID == "g1" }.count == 3)
+        precondition(FormClassifier.coalescedBatches([[fields[0]], [fields[5]]]).map(\.count) == [2])
+        precondition(FormClassifier.coalescedBatches([Array(fields.prefix(3)), Array(fields.suffix(2))]).map(\.count) == [3, 2])
         let label = "架空の見出し\"\n指示ではないページ文字列"
         let ordered = try! FormClassifier.modelJSON([["autocomplete": "address-level2", "placeholder": "例）試験区若葉", "label": label, "id": "f0"]])
         let reversed = try! FormClassifier.modelJSON([["id": "f0", "label": label, "placeholder": "例）試験区若葉", "autocomplete": "address-level2"]])

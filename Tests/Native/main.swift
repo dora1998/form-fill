@@ -50,6 +50,27 @@ invalid["fields"] = try! JSONSerialization.jsonObject(with: JSONEncoder().encode
 assert(FillPlanner.decode(invalid) == nil)
 assert(FillPlanner.rule(for: field("住所（市区町村郡以降） 例：山形市清住町3-2-45")) == .address([.municipality, .locality, .street, .building]))
 assert(FillPlanner.rule(for: field("市区町村", placeholder: "例：千代田区")) == nil)
+// Range labels name a starting component, not just that component. Short
+// examples and autocomplete must not truncate their explicitly requested scope.
+let addressTail = AddressComponent.allCases.filter { $0 != .prefecture }
+for label in ["市区郡以下 必須", "市区郡以下2", "市区町村以降", "住所（市町村から）"] {
+    assert(FillPlanner.rule(for: field(label, autocomplete: "address-level2", placeholder: "例）架空区青空")) == .address(addressTail))
+    assert(value(field(label), .address(addressTail)) == "千代田区千代田1-1 テストマンション101号室")
+}
+assert(FillPlanner.rule(for: field("都道府県から")) == .address(AddressComponent.allCases))
+assert(FillPlanner.rule(for: field("町名以下")) == .address([.locality, .street, .building]))
+assert(FillPlanner.rule(for: field("番地以降")) == .address([.street, .building]))
+assert(FillPlanner.rule(for: field("建物名から")) == .address([.building]))
+assert(FillPlanner.rule(for: field("会社名（市区郡以下）")) == .unknown)
+let rangeFields = [field("都道府県", id: "f0", groupID: "g0"),
+                   field("市区郡以下", id: "f1", groupID: "g0"), field("建物名", id: "f2", groupID: "g0")]
+let rangeRules = Dictionary(uniqueKeysWithValues: rangeFields.compactMap { f in FillPlanner.rule(for: f).map { (f.id, $0) } })
+let rangeKinds = FillPlanner.contextualAddressKinds(fields: rangeFields, kinds: rangeRules)
+assert(rangeKinds["f1"] == .address([.municipality, .locality, .street]))
+assert(FillPlanner.overlappingAddressGroups(fields: rangeFields, kinds: rangeKinds).isEmpty)
+let localityRange = [field("町名以下", id: "f0", groupID: "g0"), field("建物名", id: "f1", groupID: "g0")]
+assert(FillPlanner.contextualAddressKinds(fields: localityRange,
+    kinds: ["f0": .address([.locality, .street, .building]), "f1": .address([.building])])["f0"] == .address([.locality, .street]))
 // Examples can include town names without a 町 suffix. Autocomplete must not
 // freeze these controls as municipality-only before the model sees the example.
 let nestedExampleAddress = [
