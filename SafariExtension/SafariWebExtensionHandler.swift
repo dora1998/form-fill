@@ -29,7 +29,7 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
                 context.completeRequest(returningItems: [response], completionHandler: nil)
             }
         } else if let request = message as? [String: Any],
-           ["prepareFill", "commitFill", "cancelFill"].contains(BridgeContract.requestType(from: message) ?? "") {
+           ["prepareFill", "commitFill", "quickFill", "cancelFill"].contains(BridgeContract.requestType(from: message) ?? "") {
             Task {
                 response.userInfo = [SFExtensionMessageKey: await ProfileFillService.shared.handle(request)]
                 context.completeRequest(returningItems: [response], completionHandler: nil)

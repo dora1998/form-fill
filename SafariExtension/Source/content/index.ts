@@ -1,3 +1,4 @@
+import { installInline } from './inline';
 import { candidates, metadata, groupIDs } from './fields';
 import { newRequestID } from '../shared/request-id';
 import { createApply } from './apply';
@@ -5,7 +6,7 @@ import { unchanged } from './snapshot';
 import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction } from '../shared/contracts';
 (() => {
     const installed = globalThis.__formFillContentHandler;
-    if (installed?.version === 13) return;
+    if (installed?.version === 14) return;
     if (installed) {
         browser.runtime.onMessage.removeListener(installed.listener);
         installed.disposeInline?.();
@@ -56,7 +57,7 @@ import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction
     };
     window.addEventListener('pagehide', () => { clear(); developerRecord = undefined; developerEntries = []; });
     browser.runtime.onMessage.addListener(listener);
-    globalThis.__formFillContentHandler = { version: 13, listener,
+    globalThis.__formFillContentHandler = { version: 14, listener, disposeInline: installInline(),
         developerFieldID: element => developerRecord?.url === location.href ? developerEntries.find(entry => entry.element === element)?.field.id ?? null : null,
         developerRecord: () => developerRecord?.url === location.href ? developerRecord : null,
         matchesSnapshot: (id) => matches(id)

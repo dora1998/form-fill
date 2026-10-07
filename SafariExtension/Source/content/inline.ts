@@ -1,5 +1,5 @@
 import { eligible, metadata } from './fields';
-import type { Control, Extraction, FillRequest, FillResponse } from '../shared/contracts';
+import type { Control } from '../shared/contracts';
 
 // Conservative subset of FillPlanner.rule. No page scan or native call on focus.
 export function isRuleTarget(element: Control): boolean {
@@ -22,7 +22,7 @@ export function isRuleTarget(element: Control): boolean {
         || /郵便番号/.test(label);
 }
 
-export function installInline(extract: (target: Control) => Extraction, apply: (request: FillRequest) => Promise<FillResponse>): () => void {
+export function installInline(): () => void {
     let target: Control | null = null;
     let host: HTMLDivElement | null = null;
     let button: HTMLButtonElement;
@@ -60,6 +60,7 @@ export function installInline(extract: (target: Control) => Extraction, apply: (
         const element = document.activeElement;
         if (element === target || element === host && host) return;
         hide();
+        if (location.protocol !== 'https:') return;
         if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)
             || !isRuleTarget(element)) return;
         target = element;
@@ -72,38 +73,30 @@ export function installInline(extract: (target: Control) => Extraction, apply: (
         button = document.createElement('button');
         button.type = 'button';
         button.textContent = '自動入力';
-        button.title = '同じグループの姓名・住所をお試しプロフィールで入力（既存値を上書き）';
+        button.title = '認証して登録した姓名・住所を自動入力（既存値を上書き）';
         // Keep the field and software keyboard focused while tapping.
         button.addEventListener('pointerdown', event => event.preventDefault());
         button.addEventListener('mousedown', event => event.preventDefault());
         button.addEventListener('click', async () => {
             if (busy || !target || !isRuleTarget(target)) return;
             busy = true;
-            const current = target;
             const localButton = button;
             const run = generation;
             localButton.disabled = true;
-            localButton.textContent = '入力中…';
+            localButton.textContent = '開いています…';
             let timer: ReturnType<typeof setTimeout> | undefined;
             try {
-                const extracted = extract(current);
-                // Extract once at the user's tap; only fill this structural/autocomplete group.
-                const fields = extracted.fields;
-                if (!fields.length) throw new Error('no_fields');
+                // This entry point only opens extension-owned UI. Registered values
+                // remain behind the popup's authentication and confirmation flow.
                 const result = await Promise.race([
-                    browser.runtime.sendMessage({ type: 'analyzeInline', requestID: extracted.requestID, fields }),
+                    browser.runtime.sendMessage({ type: 'openFillPopup' }),
                     new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 10000); })
                 ]);
-                if (run !== generation || document.activeElement !== current && document.activeElement !== host) return;
-                if (result?.version !== 1 || !result.ok || result.requestID !== extracted.requestID || !Array.isArray(result.items)) throw new Error('invalid_response');
-                const response = await apply({ type: 'applyFill', requestID: result.requestID,
-                    items: result.items.map(({ id, kind, value }) => ({ id, kind, value })) });
                 if (run !== generation) return;
-                if (!response.ok) throw new Error('stale_plan');
-                const count = response.results?.filter(item => item.status === 'filled').length || 0;
-                localButton.textContent = count ? `${count}欄に入力しました` : '入力できませんでした';
+                if (!result?.ok) throw new Error('popup_unavailable');
+                localButton.textContent = '自動入力';
             } catch {
-                if (run === generation) localButton.textContent = '再試行';
+                if (run === generation) localButton.textContent = 'Safariの拡張メニューから開く';
             } finally {
                 clearTimeout(timer);
                 if (run === generation) { busy = false; localButton.disabled = false; }

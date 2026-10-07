@@ -70,11 +70,15 @@ actor ProfileFillService {
             return ["version": 1, "ok": true]
         }
         let preparing = type == "prepareFill"
-        guard preparing || type == "commitFill",
-              session.phase == (preparing ? "analyzed" : "prepared") else { return failure("stale_plan") }
+        let quick = type == "quickFill"
+        guard preparing || quick || type == "commitFill",
+              session.phase == (preparing || quick ? "analyzed" : "prepared") else { return failure("stale_plan") }
         // A new context at commit deliberately rechecks OS authentication rather
         // than trusting a shared unlocked flag or a previous device-unlock state.
         let context = ProfileRepository.context()
+        if quick {
+            context.localizedReason = "\(session.origin)に登録した姓名・住所を入力します。既存の入力値は上書きされます。"
+        }
         sessions[id]?.phase = preparing ? "preparing" : "committing"
         sessions[id]?.context = context
         defer { context.invalidate() }
@@ -84,7 +88,7 @@ actor ProfileFillService {
                 remove(id)
                 return failure("stale_plan")
             }
-            if !preparing && (current.profileID != profile.id || current.revision != profile.revision) {
+            if !preparing && !quick && (current.profileID != profile.id || current.revision != profile.revision) {
                 remove(id)
                 return failure("profile_changed")
             }

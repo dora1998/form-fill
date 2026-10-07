@@ -20,6 +20,7 @@ test('page diagnostics exclude sensitive or unusable inputs and never access val
   const context = vm.createContext({
     browser: { runtime: { id: 'extension-id', onMessage: { addListener: fn => { listener = fn; installs++; } } } },
     getComputedStyle: element => ({ visibility: element.visibility }),
+    location: { protocol: 'https:' },
     document: { querySelectorAll: () => fields, addEventListener() {}, activeElement: null },
     window: { addEventListener() {} }, HTMLInputElement: class {}, HTMLSelectElement: class {}, HTMLTextAreaElement: class {}, cancelAnimationFrame() {}
   });
