@@ -21,12 +21,12 @@ jobs:
       - run: pnpm exec playwright install --with-deps webkit
       - run: pnpm test:browser
   ios:
-    runs-on: macos-15
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.0'
+          xcode-version: '27.0'
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
