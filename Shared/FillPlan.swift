@@ -173,6 +173,19 @@ enum FillPlanner {
         }.prefix(8).sorted()
         return closest.map { group[$0] }
     }
+    // Interpret an explicit address range using the canonical component order.
+    static func addressRangeComponents(_ label: String) -> [AddressComponent]? {
+        let starts: [(AddressComponent, String)] = [
+            (.prefecture, "都道府県"), (.municipality, "市区(?:町村郡|町村|郡)|市町村"),
+            (.locality, "町名|町域"), (.street, "丁目|番地"), (.building, "建物名|建物")
+        ]
+        for (component, names) in starts {
+            if label.range(of: "(?:\(names))\\s*(?:以下|以降|から)", options: .regularExpression) != nil {
+                return Array(AddressComponent.allCases.drop { $0 != component })
+            }
+        }
+        return nil
+    }
     // Complement broad address fields with explicitly classified sibling controls.
     static func contextualAddressKinds(fields: [FormField], kinds: [String: FieldKind]) -> [String: FieldKind] {
         var result = kinds
@@ -185,7 +198,8 @@ enum FillPlanner {
                 let barePlaceholder = placeholder.isEmpty || ["住所", "ご住所", "住所1"].contains(placeholder)
                 let generic = barePlaceholder && (["住所", "ご住所", "住所1", "住所１"].contains(label)
                     || (label.isEmpty && field.numberedAddressLine == 1))
-                guard kind == .address([.prefecture, .municipality, .locality, .street, .building]) || kind == .address([.municipality, .locality, .street, .building]) || (kind == nil && generic) else { continue }
+                let explicitRange = addressRangeComponents(field.label + " " + field.ariaLabel) != nil
+                guard kind == .address([.prefecture, .municipality, .locality, .street, .building]) || kind == .address([.municipality, .locality, .street, .building]) || (kind != nil && explicitRange) || (kind == nil && generic) else { continue }
                 let base: FieldKind = kind ?? .address([.prefecture, .municipality, .locality, .street, .building])
                 let siblings = group.filter { $0.id != field.id }
                 let covered = siblings.reduce(into: Set<String>()) { components, sibling in
@@ -390,7 +404,7 @@ enum FillPlanner {
         if label.range(of: "^(お名前|氏名|フリガナ|ふりがな)[（(]名[）)]$", options: .regularExpression) != nil { return kana ? .givenKana : .given }
         for (pattern, kind) in rules where label.range(of: pattern, options: .regularExpression) != nil { return kind }
         // Explicit component lists must not lose a component in model classification.
-        if label.range(of: "(市区町村郡|市区町村|市町村)以降", options: .regularExpression) != nil { return .address([.municipality, .locality, .street, .building]) }
+        if let components = addressRangeComponents(label) { return .address(components) }
         if label.range(of: "(市区町村|市町村).*番地", options: .regularExpression) != nil { return .address([.municipality, .locality, .street]) }
         if label.range(of: "(町名|町域).*番地", options: .regularExpression) != nil { return .address([.locality, .street]) }
         if ["建物名", "マンション名", "アパート名", "方書"].contains(where: label.contains) && !label.contains("番地") { return .address([.building]) }
