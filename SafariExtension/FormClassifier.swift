@@ -153,9 +153,21 @@ struct FormClassifier {
                 // eight-control budget among their independent groups.
                 let requestedIDs = Set(batch.map(\.id))
                 let contextFields = modelContextFields(fields, requestedIDs: requestedIDs)
-                let context: [[String: Any]] = contextFields.map { ["id": $0.id, "groupID": groupByID[$0.id] ?? "g0", "label": String($0.displayLabel.prefix(32)),
-                    "placeholder": String($0.placeholder.prefix(60)), "autocomplete": $0.autocomplete,
-                    "type": $0.type, "maxLength": $0.maxLength, "knownKind": kinds[$0.id]?.rawValue ?? "unknown", "knownComponents": kinds[$0.id]?.components.map(\.rawValue) ?? [], "knownSource": sources[$0.id] ?? "unclassified"] }
+                var context = [[String: Any]]()
+                for field in contextFields {
+                    // Keep each assignment simple for Swift 6.2's type checker.
+                    var info: [String: Any] = ["id": field.id]
+                    info["groupID"] = groupByID[field.id] ?? "g0"
+                    info["label"] = String(field.displayLabel.prefix(32))
+                    info["placeholder"] = String(field.placeholder.prefix(60))
+                    info["autocomplete"] = field.autocomplete
+                    info["type"] = field.type
+                    info["maxLength"] = field.maxLength
+                    info["knownKind"] = kinds[field.id]?.rawValue ?? "unknown"
+                    info["knownComponents"] = kinds[field.id]?.components.map(\.rawValue) ?? []
+                    info["knownSource"] = sources[field.id] ?? "unclassified"
+                    context.append(info)
+                }
                 let encodedContext = try modelJSON(context)
                 var modelFields = [[String: Any]]()
                 for field in batch {
