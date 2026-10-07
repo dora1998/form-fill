@@ -161,6 +161,7 @@ const path = require('node:path');
           if (message.type === 'saveDeveloperReport') { window.savedDeveloperReport = message.report; return { version: 1, ok: true }; }
           if (message.type === 'cancelFill') return { ok: true };
           if (message.type === 'analyzeForm') {
+            window.analysisCount = (window.analysisCount || 0) + 1;
             fields = message.fields;
             return { version: 1, ok: true, requestID: message.requestID, sessionID: 'session',
               developerDiagnostics: message.developerDiagnostics ? {trace: [{message: 'synthetic model prompt/output'}]} : undefined,
@@ -178,7 +179,15 @@ const path = require('node:path');
     await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/developer-ui.js'), 'utf8') });
     await popup.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../../SafariExtension/Resources/popup.js'), 'utf8') });
     await popup.locator('summary').click();
-    await popup.locator('#developer-record').check();
+    await popup.locator('#save-developer').click();
+    await popup.waitForFunction(() => !document.querySelector('#save-developer').disabled);
+    const collectedReport = JSON.parse(await popup.evaluate(() => window.savedDeveloperReport));
+    assert.equal(collectedReport.page.lastRun.analysis.response.developerDiagnostics.trace[0].message, 'synthetic model prompt/output');
+    assert.equal(collectedReport.page.lastRun.analysisPage.documents[0].controls[0].value, '元の姓');
+    assert.equal(await popup.evaluate(() => window.analysisCount), 1);
+    await popup.locator('#save-developer').click();
+    await popup.waitForFunction(() => !document.querySelector('#save-developer').disabled);
+    assert.equal(await popup.evaluate(() => window.analysisCount), 1, 'existing detailed log is saved without reanalysis');
     await popup.locator('#analyze').click();
     await popup.locator('#unlock:not([disabled])').waitFor();
     assert.equal((await popup.locator('#plan').textContent()).includes('山田'), false);
@@ -209,13 +218,11 @@ const path = require('node:path');
     await popup.waitForFunction(() => !document.querySelector('#save-developer').disabled);
     const rawReport = JSON.parse(await popup.evaluate(() => window.savedDeveloperReport));
     assert.equal(rawReport.page.lastRun.analysis.response.developerDiagnostics.trace[0].message, 'synthetic model prompt/output');
-    assert.equal(rawReport.page.lastRun.fill.after[0].value, '山田');
-    assert.equal(rawReport.page.lastRun.analysisPage.documents[0].controls[0].value, '元の姓');
-    assert.ok(rawReport.page.lastRun.fill.events.some(e => e.stage === 'after_input_event'));
+    assert.equal(rawReport.page.lastRun.fill, undefined, 'saving logs does not autofill');
     // The native boundary is separately tested to mask this in-memory report before persistence.
 
     await popup.close();
-    assert.equal((await page.evaluate(() => __formFillContentHandler.developerRecord())).fill.after[0].value, '山田');
+    assert.ok(await page.evaluate(() => __formFillContentHandler.developerRecord()));
     // Secrets can occur in any DOM string, including labels and option metadata.
     const secret = 'PRIVATE-person-address-token';
     await load(`<label>${secret}<input id="${secret}" name="${secret}" value="${secret}" placeholder="${secret}" aria-label="${secret}" pattern="${secret}" autocomplete="section-${secret} name"></label>

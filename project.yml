@@ -27,6 +27,9 @@ targets:
         CFBundleDevelopmentRegion: ja
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.formfill.app
+            CFBundleURLSchemes: [formfill]
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
         UIApplicationSceneManifest:

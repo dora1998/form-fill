@@ -39,7 +39,7 @@ assert not (root / "package-lock.json").exists()
 assert json.loads((root / "tsconfig.json").read_text())["compilerOptions"]["strict"] is True
 assert (root / "App/Assets.xcassets/AppIcon.appiconset/AppIcon.png").is_file()
 popup = (resources / "popup.html").read_text()
-for filename in re.findall(r'(?:src|href)="([^"]+)"', popup):
+for filename in re.findall(r'<(?:script|link)\b[^>]*(?:src|href)="([^"]+)"', popup):
     assert (resources / filename).is_file(), filename
 print("Scaffold checks passed (plist, manifest, permissions, resource references).")
 
@@ -50,7 +50,7 @@ if len(sys.argv) > 1:
     assert packaged == manifest, "Packaged manifest differs from source"
     references = packaged["background"]["scripts"] + [packaged["action"]["default_popup"], "content.js"]
     references += list(packaged["icons"].values()) + list(packaged["action"]["default_icon"].values())
-    references += re.findall(r'(?:src|href)="([^"]+)"', (bundle / "popup.html").read_text())
+    references += re.findall(r'<(?:script|link)\b[^>]*(?:src|href)="([^"]+)"', (bundle / "popup.html").read_text())
     for filename in references:
         assert (bundle / filename).is_file(), f"Missing packaged resource: {filename}"
     assert (bundle / "developer-ui.js").exists()

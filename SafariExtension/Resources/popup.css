@@ -1,36 +1,47 @@
-:root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, sans-serif; --accent: #245ac7; --secondary: light-dark(#536078, #bdc7da); }
+:root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, sans-serif; --accent: light-dark(#245ac7, #376edd); --secondary: light-dark(#536078, #bdc7da); --line: light-dark(#e0e6f0, #3a4253); }
 * { box-sizing: border-box; }
-body { width: 360px; max-width: 100vw; margin: 0; padding: 20px; background: light-dark(#f6f8fc, #151820); color: light-dark(#17213a, #f1f4fb); }
+html { min-width: 320px; background: light-dark(#f6f8fc, #151820); }
+body { min-width: 320px; margin: 0; color: light-dark(#17213a, #f1f4fb); }
+.popup-shell { width: 100%; max-width: 400px; min-width: 320px; margin-inline: auto; padding: 24px; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-h1 { font-size: 23px; margin: 0; letter-spacing: -.5px; }
-h2 { font-size: 16px; margin: 20px 0 10px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -.5px; }
+h2 { font-size: 17px; margin: 16px 0 8px; }
 p { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .intro { margin: 8px 0 18px; color: var(--secondary); }
-body:has(#preview:not([hidden])) > :is(.intro, .setup-note, .note) { display: none; }
-body:has(#preview:not([hidden])) > #analyze { margin-top: 12px; }
-.badge { font-size: 12px; border-radius: 20px; padding: 5px 9px; background: light-dark(#e5ecfb, #2b3857); color: light-dark(#245ac7, #a9c6ff); }
-.profile { border: 1px solid light-dark(#e0e6f0, #3a4253); background: light-dark(#fff, #242936); padding: 16px; border-radius: 16px; }
-.profile strong { display: block; font-size: 18px; margin-bottom: 4px; }
-.profile span { color: var(--secondary); font-size: 12px; }
-.profile p { margin: 10px 0 0; }
-.note { color: var(--secondary); font-size: 12px; margin: 14px 0; }
-button { width: 100%; min-height: 44px; padding: 12px; border: 0; border-radius: 12px; background: var(--accent); color: white; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+body:has(#preview:not([hidden])) .intro { display: none; }
+.main-card { margin-top: 20px; }
+.badge { flex-shrink: 0; font-size: 11px; border-radius: 20px; padding: 5px 9px; background: light-dark(#e5ecfb, #2b3857); color: light-dark(#245ac7, #a9c6ff); }
+.note { color: var(--secondary); font-size: 12px; margin: 12px 0; }
+button { width: 100%; min-height: 44px; padding: 12px; border: 0; border-radius: 10px; background: var(--accent); color: white; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 button:disabled { opacity: .55; cursor: default; }
-button:focus-visible, summary:focus-visible { outline: 3px solid #7eaaff; outline-offset: 3px; }
-#fill-status { margin: 12px 0; font-size: 13px; }
-#site { font-weight: 600; }
+button:focus-visible, summary:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #7eaaff; outline-offset: 3px; }
+#fill-status { margin: 12px 0 0; font-size: 13px; white-space: pre-line; }
+#fill-status:empty, ul:empty { display: none; }
+#site { font-weight: 600; font-size: 12px; color: var(--secondary); }
 li { font-size: 13px; line-height: 1.5; margin: 10px 0; overflow-wrap: anywhere; }
 ul { padding-left: 18px; }
 #skipped { color: var(--secondary); }
-hr { border: 0; border-top: 1px solid #8884; margin: 20px 0; }
+body:has(#preview:not([hidden]), #targets:not([hidden])) #analyze { background: transparent; color: var(--secondary); border: 1px solid var(--line); font-weight: 500; }
+#fill:disabled { display: none; }
+#cancel-quick { margin-top: 20px; background: light-dark(#17213a, #f1f4fb); color: light-dark(#fff, #17213a); }
+hr { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
 #debug-output { width: 100%; height: 160px; font: 12px ui-monospace, monospace; }
-details { margin-top: 22px; border-top: 1px solid #8884; padding-top: 16px; }
-summary { cursor: pointer; font-size: 13px; font-weight: 600; min-height: 44px; padding: 10px 0; }
-details p, details label { font-size: 12px; color: var(--secondary); }
-details label { display: flex; gap: 8px; margin: 16px 0; line-height: 1.5; align-items: start; }
-input[type=checkbox] { min-width: 18px; min-height: 18px; accent-color: var(--accent); }
-details button { background: light-dark(#e6ecf8, #303c56); color: light-dark(#244576, #d9e6ff); }
+details { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 8px; }
+summary { cursor: pointer; font-size: 12px; color: var(--secondary); min-height: 44px; padding: 12px 0; }
+details p { font-size: 12px; color: var(--secondary); }
+details button { background: transparent; border: 1px solid var(--line); color: var(--secondary); font-size: 12px; font-weight: 500; }
 [hidden] { display: none !important; }
+#targets label { display: block; font-size: 13px; margin: 16px 0 8px; }
+#target-group { width: 100%; min-height: 44px; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--line); background: light-dark(#fff, #202531); color: inherit; border-radius: 8px; }
+#progress { text-align: center; padding: 20px 0 8px; }
+.spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+body[data-mode="opening"] :is(main > p, #analyze, #developer-tools) { display: none; }
+body[data-mode="quick"] :is(main > p, #analyze, #targets, #preview, #developer-tools) { display: none; }
+body[data-mode="quick"] #fill-status { display: none; }
+body[data-mode="quick"] #open-settings { display: none; }
 
-#targets label { display: block; font-size: 14px; margin: 12px 0 8px; }
-#target-group { width: 100%; min-height: 44px; font: inherit; padding: 8px; border-radius: 8px; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.settings-link { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--secondary); border-radius: 10px; }
+.settings-link:hover { background: light-dark(#e5ecfb, #2b3857); }

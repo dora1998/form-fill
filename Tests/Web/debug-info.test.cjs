@@ -78,7 +78,7 @@ function popup({ denyAccess = false, denyClipboard = false, noFields = false, un
   const messages = [];
   const context = { setTimeout: (...args) => { const timer = setTimeout(...args); timer.unref(); return timer; }, clearTimeout, URL, window: { addEventListener() {} },
     navigator: { clipboard: { writeText: async value => { if (denyClipboard) throw Error(secret); copied.push(value); } } },
-    document: { addEventListener() {}, querySelector: selector => nodes[selector] ||= { hidden: false, value: '', textContent: '', disabled: false,
+    document: { body: { dataset: { mode: 'opening' } }, addEventListener() {}, querySelector: selector => nodes[selector] ||= { hidden: false, value: '', textContent: '', disabled: false,
       addEventListener: (_, fn) => { nodes[selector].click = fn; }, replaceChildren() {}, append() {}, focus() {}, select() {} },
       createElement: () => ({}) },
     browser: { tabs: { query: async () => [{ id: 5, url: `https://example.test/${secret}?token=${secret}` }],

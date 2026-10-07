@@ -50,8 +50,10 @@ function popupContext(nativeResponse, failInjection = false, modelResponse = nul
     '#check': button, '#status': status, '#check-model': modelButton, '#model-status': modelStatus,
     '#analyze': { addEventListener() {} }, '#unlock': { addEventListener() {} }, '#fill': { addEventListener() {} }, '#fill-status': {}, '#preview': {},
     '#target-group': { addEventListener() {} }, '#analyze-target': { addEventListener() {} }, '#targets': {}, '#target-fields': {},
-    '#copy-debug': { addEventListener() {} }, '#debug-status': {}, '#debug-output': {}
+    '#progress': {}, '#progress-title': {}, '#progress-detail': {}, '#save-developer': { addEventListener() {} },
+    '#developer-status': {}, '#copy-debug': { addEventListener() {} }, '#debug-status': {}, '#debug-output': {}
   })[selector];
+  context.document.body = { dataset: { mode: 'opening' } };
   context.document.addEventListener = () => {};
   vm.createContext(context);
   vm.runInContext(resource('debug-info.js'), context);
