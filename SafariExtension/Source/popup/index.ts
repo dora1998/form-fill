@@ -7,6 +7,11 @@ const unlockButton = document.querySelector<HTMLButtonElement>('#unlock')!;
 const fillButton = document.querySelector<HTMLButtonElement>('#fill')!;
 const fillStatus = document.querySelector<HTMLElement>('#fill-status')!;
 const cancelQuickButton = document.querySelector<HTMLButtonElement>('#cancel-quick');
+const targets = document.querySelector<HTMLElement>('#targets')!;
+const targetGroup = document.querySelector<HTMLSelectElement>('#target-group')!;
+const targetFields = document.querySelector<HTMLElement>('#target-fields')!;
+let selectionContext: { tabID: number; url: string; requestID: string } | undefined;
+let targetOptions: NonNullable<Extraction['groups']> = [];
 const preview = document.querySelector<HTMLElement>('#preview')!;
 type Session = { tabID: number; origin: string; requestID: string; sessionID: string };
 let session: Session | null = null;
@@ -53,6 +58,8 @@ const clear = () => {
     if (session) cancel(session);
     session = null;
     preview.hidden = true;
+    targets.hidden = true;
+    selectionContext = undefined;
     unlockButton.hidden = false;
     unlockButton.disabled = true;
     fillButton.disabled = true;
@@ -66,7 +73,8 @@ const fail = (error: unknown) => {
     fillStatus.textContent = errorMessages[error instanceof Error ? error.message : '']
         ?? '処理できませんでした。Safariのサイトアクセス許可を確認して再試行してください。';
 };
-const analyze = async (quickStart?: { tabID: number; url: string }) => {
+const analyze = async (quickStart?: { tabID: number; url: string }, selectedGroup?: string) => {
+    const selectedContext = selectedGroup ? selectionContext : undefined;
     clear();
     const token = generation;
     const detailed = document.querySelector<HTMLInputElement>('#developer-record')?.checked === true;
@@ -85,6 +93,7 @@ const analyze = async (quickStart?: { tabID: number; url: string }) => {
     try {
         const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
         if (tab?.id == null || !tab.url) throw new Error('no_tab');
+        if (selectedGroup && (!selectedContext || selectedContext.tabID !== tab.id || selectedContext.url !== tab.url)) throw new Error('stale_plan');
         if (quickStart && (tab.id !== quickStart.tabID || tab.url !== quickStart.url)) throw new Error('stale_plan');
         const url = new URL(tab.url);
         if (url.protocol !== 'https:') throw new Error('https_required');
@@ -99,8 +108,26 @@ const analyze = async (quickStart?: { tabID: number; url: string }) => {
         developerTabID = tab.id;
         debugAnalysisURL = FormFillDebug.pageURL(tab.url).url;
         await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-        const extracted: Extraction = await browser.tabs.sendMessage(tab.id, { type: 'extract', developerDiagnostics: detailed });
+        const extracted: Extraction = await browser.tabs.sendMessage(tab.id, { type: 'extract', developerDiagnostics: detailed, groupID: selectedGroup, selectionRequestID: selectedContext?.requestID, inlineTarget: Boolean(quickStart) });
         if (token !== generation) return;
+        if (!quickStart && !selectedGroup && (extracted.groups?.length ?? 0) > 1) {
+            selectionContext = { tabID: tab.id, url: tab.url, requestID: extracted.requestID };
+            targetOptions = extracted.groups!;
+            targetGroup.replaceChildren(...targetOptions.map(group => {
+                const option = document.createElement('option');
+                option.value = group.id;
+                option.textContent = group.label;
+                return option;
+            }));
+            targetFields.textContent = targetOptions[0].fields.join('・');
+            targets.hidden = false;
+            fillStatus.textContent = '入力するグループを選んでください。';
+            return;
+        }
+        const activeGroup = (extracted.groups?.length ?? 0) > 1
+            ? extracted.groups?.find(group => group.id === extracted.fields[0]?.groupID) : undefined;
+        const destination = `${url.origin}${activeGroup ? ` / ${activeGroup.label}` : ''}`;
+        document.querySelector<HTMLElement>('#site')!.textContent = `入力先: ${destination}`;
         debugRequestID = extracted.requestID;
         debugFields = FormFillDebug.fieldMetadata(extracted.fields);
         if (detailed) {
@@ -129,7 +156,7 @@ const analyze = async (quickStart?: { tabID: number; url: string }) => {
         session = saved;
         if (quickStart) {
             rows('#plan', result.classifications, item => `${item.label}: ${item.kind === 'unknown' ? '保留' : '認証後に入力'}`);
-            fillStatus.textContent = `${url.origin}へ登録した姓名・住所を入力します。Face IDまたは端末パスコードで認証してください。既存値は上書きされます。`;
+            fillStatus.textContent = `${destination}へ登録した姓名・住所を入力します。Face IDまたは端末パスコードで認証してください。既存値は上書きされます。`;
             const committed = await withTimeout(browser.runtime.sendMessage({ type: 'quickFill', ...saved }));
             await recordPhase(saved, 'commit', committed);
             if (token !== generation) return;
@@ -140,7 +167,6 @@ const analyze = async (quickStart?: { tabID: number; url: string }) => {
             if (filled > 0) window.close();
             return;
         }
-        document.querySelector<HTMLElement>('#site')!.textContent = `入力先: ${url.origin}`;
         rows('#plan', result.classifications, item => `${item.label}: ${item.kind === 'unknown' ? '判定できません' : '認証後に入力候補を確認'}`);
         preview.hidden = false;
         unlockButton.disabled = false;
@@ -152,6 +178,10 @@ const analyze = async (quickStart?: { tabID: number; url: string }) => {
     } finally { if (token === generation || !session) analyzeButton.disabled = false; if (cancelQuickButton) cancelQuickButton.hidden = true; }
 };
 analyzeButton.addEventListener('click', () => analyze());
+targetGroup.addEventListener('change', () => {
+    targetFields.textContent = targetOptions.find(group => group.id === targetGroup.value)?.fields.join('・') || '';
+});
+document.querySelector('#analyze-target')!.addEventListener('click', () => analyze(undefined, targetGroup.value));
 cancelQuickButton?.addEventListener('click', () => { clear(); fillStatus.textContent = 'キャンセルしました。'; });
 unlockButton.addEventListener('click', async () => {
     const saved = session;

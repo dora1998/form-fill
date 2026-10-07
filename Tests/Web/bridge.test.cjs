@@ -49,6 +49,7 @@ function popupContext(nativeResponse, failInjection = false, modelResponse = nul
   context.document.querySelector = selector => ({
     '#check': button, '#status': status, '#check-model': modelButton, '#model-status': modelStatus,
     '#analyze': { addEventListener() {} }, '#unlock': { addEventListener() {} }, '#fill': { addEventListener() {} }, '#fill-status': {}, '#preview': {},
+    '#target-group': { addEventListener() {} }, '#analyze-target': { addEventListener() {} }, '#targets': {}, '#target-fields': {},
     '#copy-debug': { addEventListener() {} }, '#debug-status': {}, '#debug-output': {}
   })[selector];
   context.document.addEventListener = () => {};

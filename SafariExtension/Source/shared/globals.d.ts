@@ -47,6 +47,9 @@ declare global {
             sendMessage(tabID: number, message: { type: 'validateSnapshot' | 'discardSnapshot'; requestID: string }): Promise<{ version: number; ok: boolean }>;
             sendMessage(tabID: number, message: {
                 type: 'extract';
+                groupID?: string;
+                selectionRequestID?: string;
+                inlineTarget?: boolean;
                 developerDiagnostics?: boolean;
             }): Promise<Extraction>;
             sendMessage(tabID: number, message: FillRequest): Promise<FillResponse>;

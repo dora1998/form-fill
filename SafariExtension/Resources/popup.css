@@ -31,3 +31,6 @@ details label { display: flex; gap: 8px; margin: 16px 0; line-height: 1.5; align
 input[type=checkbox] { min-width: 18px; min-height: 18px; accent-color: var(--accent); }
 details button { background: light-dark(#e6ecf8, #303c56); color: light-dark(#244576, #d9e6ff); }
 [hidden] { display: none !important; }
+
+#targets label { display: block; font-size: 14px; margin: 12px 0 8px; }
+#target-group { width: 100%; min-height: 44px; font: inherit; padding: 8px; border-radius: 8px; }

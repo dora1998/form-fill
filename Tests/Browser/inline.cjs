@@ -46,6 +46,25 @@ const fs = require('node:fs');
     assert.equal(await host.count(), 1, 'popup failure retains entry');
     assert.equal(await page.locator('input').first().inputValue(), '');
     assert.equal(await page.evaluate(() => listener({ type: 'extract' }, { id: 'test', tab: { id: 1 } })), undefined);
+    await page.route('https://fixture.example/grouped', route => route.fulfill({ contentType: 'text/html', body:
+      '<form><fieldset><legend>配送先</legend><label>姓<input autocomplete="family-name"></label></fieldset><fieldset><legend>請求先</legend><label>姓<input autocomplete="family-name"></label></fieldset></form>' }));
+    await page.goto('https://fixture.example/grouped');
+    await page.evaluate(() => window.browser = { runtime: { id: 'test', onMessage: { addListener: fn => window.listener = fn, removeListener() {} }, sendMessage: async () => ({ ok: true }) } });
+    await page.addScriptTag({ content: source });
+    await page.locator('input').nth(1).focus();
+    const groupedBox = await page.locator('[data-form-fill-inline]').boundingBox();
+    await page.mouse.click(groupedBox.x + groupedBox.width / 2, groupedBox.y + 24);
+    await page.addScriptTag({ content: source });
+    await page.locator('input').first().focus();
+    const scoped = await page.evaluate(() => listener({ type: 'extract', inlineTarget: true }, { id: 'test' }));
+    assert.equal(scoped.fields.length, 1);
+    assert.equal(scoped.fields[0].groupID, 'g1');
+    assert.equal((await page.evaluate(() => listener({ type: 'extract', inlineTarget: true }, { id: 'test' }))).fields.length, 0, 'target is consumed once');
+    await page.locator('input').nth(1).focus();
+    const removedBox = await page.locator('[data-form-fill-inline]').boundingBox();
+    await page.mouse.click(removedBox.x + removedBox.width / 2, removedBox.y + 24);
+    await page.locator('input').nth(1).evaluate(element => element.remove());
+    assert.equal((await page.evaluate(() => listener({ type: 'extract', inlineTarget: true }, { id: 'test' }))).fields.length, 0, 'removed target never falls back to another group');
     await page.route('http://fixture.example/**', route => route.fulfill({ contentType: 'text/html', body: '<label>姓<input></label>' }));
     await page.goto('http://fixture.example/form');
     await page.evaluate(() => window.browser = { runtime: { id: 'test', onMessage: { addListener: fn => window.listener = fn } } });
@@ -68,7 +87,7 @@ const fs = require('node:fs');
         window.browser = {
           runtime: { getManifest: () => ({ version: 'test' }), sendMessage: async message => {
             requests.push(message);
-            if (message.type === 'consumeInlineStart') return { ok: true, ...(mode === 'manual' ? {} : { tabID: 5, url: mode === 'stale' ? 'https://fixture.example/other' : 'https://fixture.example/form' }) };
+            if (message.type === 'consumeInlineStart') return { ok: true, ...(['manual', 'groups', 'groups-stale'].includes(mode) ? {} : { tabID: 5, url: mode === 'stale' ? 'https://fixture.example/other' : 'https://fixture.example/form' }) };
             if (message.type === 'analyzeForm') {
               if (mode === 'cancel') await new Promise(resolve => window.finishAnalysis = resolve);
               return { ok: true, requestID: message.requestID, sessionID: 'session', classifications: [{ id: 'f0', kind: 'family', label: '姓' }] };
@@ -77,7 +96,12 @@ const fs = require('node:fs');
             return { ok: true };
           } },
           tabs: { query: async () => [{ id: 5, url: 'https://fixture.example/form' }], sendMessage: async (_, message) => {
-            if (message.type === 'extract') return { requestID: 'request', fields: [{ id: 'f0' }] };
+            if (message.type === 'extract') {
+              if (mode === 'groups-stale' && message.groupID) throw new Error('stale_plan');
+              if (mode.startsWith('groups')) return { requestID: 'request', fields: message.groupID ? [{ id: 'f0', groupID: message.groupID }] : [{ id: 'f0', groupID: 'g0' }, { id: 'f1', groupID: 'g1' }],
+                groups: [{ id: 'g0', label: '配送先', fields: ['姓'] }, { id: 'g1', label: '請求先', fields: ['姓2'] }] };
+              return { requestID: 'request', fields: [{ id: 'f0' }] };
+            }
             return { ok: true };
           } },
           scripting: { executeScript: async () => [] }
@@ -93,6 +117,22 @@ const fs = require('node:fs');
     await loadPopup('manual');
     assert.deepEqual(await popup.evaluate(() => requests.map(item => item.type)), ['consumeInlineStart']);
     assert.equal(await popup.locator('#cancel-quick').isVisible(), false);
+    await loadPopup('groups');
+    await popup.locator('#analyze').click();
+    await popup.locator('#targets').waitFor({ state: 'visible' });
+    assert.equal(await popup.evaluate(() => requests.some(item => item.type === 'analyzeForm')), false);
+    await popup.locator('#target-group').selectOption('g1');
+    assert.equal(await popup.locator('#target-fields').textContent(), '姓2');
+    await popup.locator('#analyze-target').click();
+    await popup.locator('#preview').waitFor({ state: 'visible' });
+    assert.deepEqual(await popup.evaluate(() => requests.find(item => item.type === 'analyzeForm').fields.map(field => field.groupID)), ['g1']);
+    assert.equal(await popup.evaluate(() => requests.some(item => item.type === 'quickFill')), false);
+    await loadPopup('groups-stale');
+    await popup.locator('#analyze').click();
+    await popup.locator('#targets').waitFor({ state: 'visible' });
+    await popup.locator('#analyze-target').click();
+    await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('ページが変わった'));
+    assert.equal(await popup.evaluate(() => requests.some(item => item.type === 'analyzeForm')), false);
     await loadPopup('stale');
     await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('ページが変わった'));
     assert.deepEqual(await popup.evaluate(() => requests.map(item => item.type)), ['consumeInlineStart']);

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>番号付きの住所グループ</title>
+<form onsubmit="event.preventDefault(); document.body.dataset.submitted = 'true'">
+  <section>
+    <table><tbody>
+      <tr><th>姓</th><td><input autocomplete="off"></td></tr>
+      <tr><th>名</th><td><input autocomplete="off"></td></tr>
+      <tr><th>郵便番号 必須</th><td><input type="tel" maxlength="7" autocomplete="off"></td></tr>
+      <tr><th>都道府県 必須</th><td><select><option value="">選択</option><option value="13">東京都</option><option value="27">大阪府</option></select></td></tr>
+      <tr><th>市区郡以下 必須</th><td><input autocomplete="off"></td></tr>
+      <tr><th>郵便番号2</th><td><input type="tel" maxlength="7" autocomplete="off"></td></tr>
+      <tr><th>都道府県2</th><td><select><option value="">選択</option><option value="13">東京都</option><option value="27">大阪府</option></select></td></tr>
+      <tr><th>市区郡以下2</th><td><input autocomplete="off"></td></tr>
+    </tbody></table>
+  </section>
+</form>
+</html>

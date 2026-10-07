@@ -52,6 +52,7 @@ export interface Extraction {
     requestID: string;
     fields: FormField[];
     truncated: boolean;
+    groups?: { id: string; label: string; fields: string[] }[];
 }
 export interface Entry {
     element: Control;
@@ -89,6 +90,9 @@ export interface Sender {
 }
 export type PageRequest = FillRequest | { type: 'validateSnapshot' | 'discardSnapshot'; requestID: string } | {
     type: 'extract';
+    groupID?: string;
+    selectionRequestID?: string;
+    inlineTarget?: boolean;
     developerDiagnostics?: boolean;
 } | {
     type: 'inspect';
