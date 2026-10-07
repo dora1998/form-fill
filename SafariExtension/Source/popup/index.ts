@@ -1,4 +1,5 @@
 import { installDebug } from './debug';
+import { installDeveloper } from './developer';
 import type { AnalysisResult, Extraction, DiagnosticRecord } from '../shared/contracts';
 import './health';
 import { unavailableReasons } from '../shared/model-status';
@@ -14,6 +15,9 @@ let selectionContext: { tabID: number; url: string; requestID: string } | undefi
 let targetOptions: NonNullable<Extraction['groups']> = [];
 const preview = document.querySelector<HTMLElement>('#preview')!;
 type Session = { tabID: number; origin: string; requestID: string; sessionID: string };
+const progress = document.querySelector<HTMLElement>('#progress')!;
+const progressTitle = document.querySelector<HTMLElement>('#progress-title')!;
+const progressDetail = document.querySelector<HTMLElement>('#progress-detail')!;
 let session: Session | null = null;
 let generation = 0;
 let expiry: ReturnType<typeof setTimeout> | undefined;
@@ -54,6 +58,9 @@ const recordPhase = async (saved: Session, phase: string, result: unknown) => {
 };
 const clear = () => {
     generation++;
+    document.body.dataset.mode = 'ready';
+    progress.hidden = true;
+    analyzeButton.disabled = false;
     clearTimeout(expiry);
     if (session) cancel(session);
     session = null;
@@ -73,11 +80,17 @@ const fail = (error: unknown) => {
     fillStatus.textContent = errorMessages[error instanceof Error ? error.message : '']
         ?? '処理できませんでした。Safariのサイトアクセス許可を確認して再試行してください。';
 };
-const analyze = async (quickStart?: { tabID: number; url: string }, selectedGroup?: string) => {
+const analyze = async (quickStart?: { tabID: number; url: string }, selectedGroup?: string, detailed = false) => {
     const selectedContext = selectedGroup ? selectionContext : undefined;
     clear();
     const token = generation;
-    const detailed = document.querySelector<HTMLInputElement>('#developer-record')?.checked === true;
+    if (quickStart) {
+        document.body.dataset.mode = 'quick';
+        progress.hidden = false;
+        progressTitle.textContent = '入力欄を解析中';
+        progressDetail.textContent = '解析後、認証して姓名・住所を入力します。';
+        if (cancelQuickButton) cancelQuickButton.hidden = false;
+    }
     let developerTabID: number | undefined;
     const saveDeveloper = async (analysis: DiagnosticRecord, page?: unknown) => {
         if (!detailed || developerTabID == null || !debugRequestID) return;
@@ -103,14 +116,14 @@ const analyze = async (quickStart?: { tabID: number; url: string }, selectedGrou
             unlockButton.hidden = true;
             fillButton.hidden = true;
             if (cancelQuickButton) cancelQuickButton.hidden = false;
-            fillStatus.textContent = `${url.origin}の姓名・住所欄を解析し、認証後に入力します。既存値は上書きされます。`;
+            fillStatus.textContent = '';
         }
         developerTabID = tab.id;
         debugAnalysisURL = FormFillDebug.pageURL(tab.url).url;
         await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
         const extracted: Extraction = await browser.tabs.sendMessage(tab.id, { type: 'extract', developerDiagnostics: detailed, groupID: selectedGroup, selectionRequestID: selectedContext?.requestID, inlineTarget: Boolean(quickStart) });
         if (token !== generation) return;
-        if (!quickStart && !selectedGroup && (extracted.groups?.length ?? 0) > 1) {
+        if (!detailed && !quickStart && !selectedGroup && (extracted.groups?.length ?? 0) > 1) {
             selectionContext = { tabID: tab.id, url: tab.url, requestID: extracted.requestID };
             targetOptions = extracted.groups!;
             targetGroup.replaceChildren(...targetOptions.map(group => {
@@ -153,10 +166,16 @@ const analyze = async (quickStart?: { tabID: number; url: string }, selectedGrou
         }
         if (!result.ok || result.requestID !== extracted.requestID || !result.sessionID || !Array.isArray(result.classifications))
             throw new Error(result.error ?? 'analysis_failed');
+        if (detailed) {
+            fillStatus.textContent = '詳細ログ用の解析が完了しました。';
+            cancel(saved);
+            return;
+        }
         session = saved;
         if (quickStart) {
-            rows('#plan', result.classifications, item => `${item.label}: ${item.kind === 'unknown' ? '保留' : '認証後に入力'}`);
-            fillStatus.textContent = `${destination}へ登録した姓名・住所を入力します。Face IDまたは端末パスコードで認証してください。既存値は上書きされます。`;
+            progressTitle.textContent = '認証して入力中';
+            progressDetail.textContent = 'Face IDまたは端末パスコードで認証してください。';
+            fillStatus.textContent = '';
             const committed = await withTimeout(browser.runtime.sendMessage({ type: 'quickFill', ...saved }));
             await recordPhase(saved, 'commit', committed);
             if (token !== generation) return;
@@ -175,7 +194,15 @@ const analyze = async (quickStart?: { tabID: number; url: string }, selectedGrou
     } catch (error) {
         await saveDeveloper({ status: 'failed', error: String(error) });
         if (token === generation) { lastAnalysis = FormFillDebug.analysis('failed'); fail(error); }
-    } finally { if (token === generation || !session) analyzeButton.disabled = false; if (cancelQuickButton) cancelQuickButton.hidden = true; }
+    } finally {
+        if (token === generation) {
+            analyzeButton.disabled = false;
+            document.body.dataset.mode = 'ready';
+            progress.hidden = true;
+            preview.hidden = quickStart ? true : preview.hidden;
+            if (cancelQuickButton) cancelQuickButton.hidden = true;
+        }
+    }
 };
 analyzeButton.addEventListener('click', () => analyze());
 targetGroup.addEventListener('change', () => {
@@ -231,10 +258,18 @@ window.addEventListener('pagehide', clear);
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') clear();
 });
+installDeveloper(async () => {
+    await analyze(undefined, undefined, true);
+});
 installDebug(() => ({ analysis: lastAnalysis, requestID: debugRequestID, fields: debugFields, analysisURL: debugAnalysisURL }));
 
 // Consume a short-lived, tab/document-bound start only from the trusted popup.
 // Opening the popup from Safari's menu keeps the ordinary preview flow.
 void browser.runtime.sendMessage({ type: 'consumeInlineStart' }).then(start => {
     if (start?.ok && start.tabID != null && start.url) return analyze({ tabID: start.tabID, url: start.url });
-}).catch(() => {});
+}).catch(() => {}).finally(() => {
+    if (document.body.dataset.mode === 'opening') {
+        document.body.dataset.mode = 'ready';
+        progress.hidden = true;
+    }
+});

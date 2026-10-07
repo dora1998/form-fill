@@ -1,12 +1,14 @@
 <!doctype html>
 <html lang="ja">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="popup.css"><title>Form Fill</title></head>
-<body>
-  <header><h1>Form Fill</h1><span class="badge">端末内で保護</span></header>
+<body data-mode="opening">
+<div class="popup-shell">
+  <header><h1>Form Fill</h1><div class="header-actions"><span class="badge">端末内で保護</span><a id="open-settings" class="settings-link" href="formfill://settings" target="_blank" rel="noopener" aria-label="アプリの設定を開く" title="アプリの設定を開く"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.4 1.7 1.7v2.6L2.2 15l2 3.4 2.2-.7 2 .9L9 21h4l.6-2.4 2-.9 2.2.7 2-3.4-1.7-1.7v-2.6l1.7-1.7-2-3.4-2.2.7-2-.9L13 3Z"/><circle cx="11" cy="12" r="3"/></svg></a></div></header>
+  <main id="main-flow">
   <p class="intro">姓名・住所を、入力欄に合わせて。</p>
-  <p class="setup-note">プロフィールはForm Fillアプリの設定から登録できます。</p>
-  <p class="note">入力内容を確認してから実行できます。表示した欄の既存値は上書きされます。フォームは送信しません。</p>
+  <div class="main-card">
   <button id="analyze" type="button">このページを解析</button>
+  <div id="progress" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><h2 id="progress-title">準備中</h2><p id="progress-detail" class="note">入力する欄を確認しています。</p></div>
   <p id="fill-status" role="status" aria-live="polite"></p>
   <button id="cancel-quick" type="button" hidden>キャンセル</button>
   <section id="targets" hidden>
@@ -22,11 +24,12 @@
     <ul id="skipped"></ul>
     <button id="fill" type="button" disabled>認証して入力する</button>
   </section>
-  <details>
+  </div>
+  </main>
+  <details id="developer-tools">
     <summary>診断・開発用ツール</summary>
-  <label><input id="developer-record" type="checkbox">詳細収録をオンにして解析する</label>
-  <p>DOM・モデルの指示と応答・入力前後の値を収録します。保存時に認証し、現在登録している姓名・住所の一致箇所をマスキングします。それ以外の個人情報やDOM内の認証情報は残る場合があります。共有前に内容を確認してください。</p>
-  <button id="save-developer" type="button">認証して詳細ログをアプリに保存</button>
+  <p>DOM・モデルの指示と応答を収録して保存します。直近の詳細ログがあればそれを保存し、なければ詳細解析します。自動入力は行いません。保存時に認証し、現在登録している姓名・住所の一致箇所をマスキングします。それ以外の個人情報やDOM内の認証情報は残る場合があります。共有前に内容を確認してください。</p>
+  <button id="save-developer" type="button">詳細ログを収録して保存</button>
   <p id="developer-status" role="status" aria-live="polite"></p>
   <button id="check" type="button">このページで疎通を確認</button>
   <p id="status" role="status" aria-live="polite">疎通確認では入力値の読み取り・自動入力は行いません。</p>
@@ -38,10 +41,10 @@
   <p id="debug-status" role="status" aria-live="polite"></p>
   <textarea id="debug-output" aria-label="手動コピー用デバッグ情報" readonly hidden></textarea>
   </details>
+  </div>
   <script src="debug-info.js"></script>
   <script src="debug-page.js"></script>
   <script src="developer-page.js"></script>
-  <script src="developer-ui.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

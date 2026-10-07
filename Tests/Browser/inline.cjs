@@ -81,6 +81,7 @@ const fs = require('node:fs');
     await popup.route('https://popup.example/**', route => route.fulfill({ contentType: 'text/html', body: popupHTML }));
     async function loadPopup(mode = 'quick') {
       await popup.goto('https://popup.example/');
+      await popup.addStyleTag({ content: fs.readFileSync(`${__dirname}/../../SafariExtension/Resources/popup.css`, 'utf8') });
       await popup.evaluate(mode => {
         window.requests = [];
         window.close = () => window.closedByFill = true;
@@ -117,6 +118,16 @@ const fs = require('node:fs');
     await loadPopup('manual');
     assert.deepEqual(await popup.evaluate(() => requests.map(item => item.type)), ['consumeInlineStart']);
     assert.equal(await popup.locator('#cancel-quick').isVisible(), false);
+    assert.equal(await popup.locator('#open-settings').getAttribute('href'), 'formfill://settings');
+    assert.equal(await popup.locator('#open-settings').getAttribute('aria-label'), 'アプリの設定を開く');
+    assert.equal(await popup.locator('.setup-note').count(), 0);
+    assert.equal(await popup.locator('.main-card').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
+    for (const width of [320, 360, 600]) {
+      await popup.setViewportSize({ width, height: 800 });
+      const shell = await popup.locator('.popup-shell').boundingBox();
+      assert.ok(Math.abs(shell.x + shell.width / 2 - width / 2) < 1, 'popup is centered');
+      assert.ok(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
+    }
     await loadPopup('groups');
     await popup.locator('#analyze').click();
     await popup.locator('#targets').waitFor({ state: 'visible' });
@@ -142,11 +153,21 @@ const fs = require('node:fs');
     assert.equal(await popup.evaluate(() => Boolean(window.closedByFill)), false);
     await loadPopup('cancel');
     await popup.waitForFunction(() => Boolean(window.finishAnalysis));
+    assert.equal(await popup.locator('#analyze').isVisible(), false);
+    assert.equal(await popup.locator('#developer-tools').isVisible(), false);
+    assert.equal(await popup.locator('#preview').isVisible(), false);
+    assert.equal(await popup.locator('#progress').isVisible(), true);
+    assert.equal(await popup.locator('#fill-status').isVisible(), false);
+    assert.equal(await popup.locator('#open-settings').isVisible(), false);
+    assert.equal(await popup.locator('#cancel-quick').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(23, 33, 58)');
+    assert.match(await popup.locator('#progress-title').textContent(), /解析中/);
+    assert.equal(await popup.locator('button:visible').count(), 1);
     await popup.locator('#cancel-quick').click();
     await popup.evaluate(() => finishAnalysis());
     await popup.waitForFunction(() => requests.some(item => item.type === 'cancelFill'));
     assert.equal(await popup.evaluate(() => requests.some(item => item.type === 'quickFill')), false);
     assert.match(await popup.locator('#fill-status').textContent(), /キャンセル/);
+    assert.equal(await popup.locator('#analyze').isEnabled(), true);
     await popup.close();
     console.log('Inline popup entry, focus, layout, reinjection, HTTPS and sender boundaries passed');
   } finally { await browser.close(); }

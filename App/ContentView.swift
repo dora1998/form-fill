@@ -1,16 +1,24 @@
 import SwiftUI
 
 struct ContentView: View {
+    private enum AppTab: Hashable { case welcome, settings }
+    @State private var selectedTab: AppTab = .welcome
+
     var body: some View {
-        TabView {
-            Tab("使い方", systemImage: "sparkles.rectangle.stack") {
+        TabView(selection: $selectedTab) {
+            Tab("使い方", systemImage: "sparkles.rectangle.stack", value: AppTab.welcome) {
                 NavigationStack { WelcomeView() }
             }
-            Tab("設定", systemImage: "gearshape") {
+            Tab("設定", systemImage: "gearshape", value: AppTab.settings) {
                 NavigationStack { ProfileSettingsView() }
             }
         }
         .tint(.blue)
+        .onOpenURL { url in
+            guard url.scheme == "formfill", url.host == "settings",
+                  url.path.isEmpty || url.path == "/" else { return }
+            selectedTab = .settings
+        }
     }
 }
 
