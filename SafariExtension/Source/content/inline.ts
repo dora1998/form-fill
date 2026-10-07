@@ -22,7 +22,7 @@ export function isRuleTarget(element: Control): boolean {
         || /郵便番号/.test(label);
 }
 
-export function installInline(): () => void {
+export function installInline(onOpen: (target: Control) => void): () => void {
     let target: Control | null = null;
     let host: HTMLDivElement | null = null;
     let button: HTMLButtonElement;
@@ -79,6 +79,7 @@ export function installInline(): () => void {
         button.addEventListener('mousedown', event => event.preventDefault());
         button.addEventListener('click', async () => {
             if (busy || !target || !isRuleTarget(target)) return;
+            onOpen(target);
             busy = true;
             const localButton = button;
             const run = generation;

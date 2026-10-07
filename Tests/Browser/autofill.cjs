@@ -261,6 +261,25 @@ const path = require('node:path');
     extracted = await send({ type: 'extract' });
     assert.deepEqual(extracted.fields.map(field => field.groupID), ['g0', 'g1']);
 
+    await load(fs.readFileSync(path.join(__dirname, '../../Fixtures/repeated-addresses.html'), 'utf8'));
+    extracted = await send({ type: 'extract' });
+    assert.deepEqual(extracted.fields.map(field => field.groupID), ['g0', 'g0', 'g0', 'g0', 'g0', 'g1', 'g1', 'g1']);
+    assert.equal(extracted.groups.length, 2);
+    const selected = await send({ type: 'extract', groupID: 'g1', selectionRequestID: extracted.requestID });
+    assert.equal(selected.fields.length, 3);
+    assert.ok(selected.fields.every(field => field.groupID === 'g1'));
+    const onlySecond = await send({ type: 'applyFill', requestID: selected.requestID, items: selected.fields.map((field, index) => ({ id: field.id, value: ['1000001', '13', '合成市1-1'][index] })) });
+    assert.ok(onlySecond.results.every(item => item.status === 'filled'));
+    assert.deepEqual(await page.locator('input,select').evaluateAll(nodes => nodes.map(node => node.value)), ['', '', '', '', '', '1000001', '13', '合成市1-1']);
+    assert.equal(await page.evaluate(() => document.body.dataset.submitted), undefined);
+    extracted = await send({ type: 'extract' });
+    await page.locator('input').first().fill('変更');
+    await assert.rejects(() => send({ type: 'extract', groupID: 'g1', selectionRequestID: extracted.requestID }), /stale_plan/);
+    // Address line numbers describe parts, and split postal controls belong together.
+    await load('<form><label>郵便番号<input type="tel" maxlength="3"></label><label>郵便番号<input type="tel" maxlength="4"></label><label>住所1<input></label><label>住所2<input></label><label>住所3<input></label></form>');
+    extracted = await send({ type: 'extract' });
+    assert.deepEqual(extracted.fields.map(field => field.groupID), Array(5).fill('g0'));
+
     console.log('WebKit DOM: extraction, 9-field fill, events, stale previews, preservation and constraints passed');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

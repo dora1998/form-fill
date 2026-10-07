@@ -1,17 +1,18 @@
 import { installInline } from './inline';
-import { candidates, metadata, groupIDs } from './fields';
+import { candidates, metadata, groupIDs, fieldLabel } from './fields';
 import { newRequestID } from '../shared/request-id';
 import { createApply } from './apply';
 import { unchanged } from './snapshot';
-import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction } from '../shared/contracts';
+import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction, Control } from '../shared/contracts';
 (() => {
     const installed = globalThis.__formFillContentHandler;
-    if (installed?.version === 14) return;
+    if (installed?.version === 15) return;
     if (installed) {
         browser.runtime.onMessage.removeListener(installed.listener);
         installed.disposeInline?.();
     } else if (globalThis.__formFillDiagnosticsInstalled) return;
     globalThis.__formFillDiagnosticsInstalled = true;
+    let inlineTarget: Control | undefined;
     let snapshot: Snapshot | undefined;
     let expires = 0;
     let developerRecord: DiagnosticRecord | undefined;
@@ -27,18 +28,29 @@ import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction
         clear();
         return saved;
     }, () => developerRecord);
-    const extract = (detailed = false): Extraction => {
+    const extract = (detailed = false, groupID?: string, fromInline = false): Extraction => {
         const all = candidates();
         const groups = groupIDs();
+        const targetGroup = fromInline ? inlineTarget && groups.get(inlineTarget) : groupID;
+        if (fromInline) inlineTarget = undefined;
+        const selected = fromInline || groupID ? all.filter(element => targetGroup && groups.get(element) === targetGroup) : all;
         const requestID = newRequestID();
-        const entries = all.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
+        const entries = selected.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
         snapshot = { requestID, entries, all, url: location.href };
         expires = performance.now() + 180_000;
         developerEntries = detailed ? entries : [];
         developerRecord = detailed ? { requestID, url: location.href, capturedAt: new Date().toISOString(),
             fields: entries.map(entry => ({ ...entry.field, initialValue: entry.initialValue })),
-            truncated: all.length > entries.length, analysis: { status: 'running' } } : undefined;
-        return { version: 1, requestID, fields: entries.map(entry => entry.field), truncated: all.length > entries.length };
+            truncated: selected.length > entries.length, analysis: { status: 'running' } } : undefined;
+        const groupKeys = [...new Set(groups.values())];
+        return { version: 1, requestID, fields: entries.map(entry => entry.field), truncated: selected.length > entries.length,
+            groups: groupKeys.map((id, index) => {
+                const controls = all.filter(element => groups.get(element) === id);
+                const heading = controls[0]?.closest('fieldset')?.querySelector('legend')?.textContent?.trim()
+                    || controls[0]?.closest('section, [role="group"]')?.querySelector('h1, h2, h3, [role="heading"]')?.textContent?.trim();
+                return { id, label: `入力先${index + 1}${heading ? `（${heading.slice(0, 80)}）` : ''}`,
+                    fields: [...new Set(controls.map(element => fieldLabel(element).trim().slice(0, 120)))].slice(0, 6) };
+            }) };
     };
     const listener = (message: PageRequest, sender: Sender) => {
         if (sender.id !== browser.runtime.id || sender.tab) return;
@@ -52,12 +64,16 @@ import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction
         if (message?.type === 'inspect') return Promise.resolve({ version: 1, fieldCount: candidates().length });
         if (message?.type === 'validateSnapshot') return Promise.resolve({ version: 1, ok: matches(message.requestID) });
         if (message?.type === 'discardSnapshot') { if (snapshot?.requestID === message.requestID) clear(); return Promise.resolve({ version: 1, ok: true }); }
-        if (message?.type === 'extract') return Promise.resolve(extract(message.developerDiagnostics === true));
+        if (message?.type === 'extract') {
+            if (message.groupID && (!message.selectionRequestID || !matches(message.selectionRequestID)))
+                return Promise.reject(new Error('stale_plan'));
+            return Promise.resolve(extract(message.developerDiagnostics === true, message.groupID, message.inlineTarget === true));
+        }
         if (message?.type === 'applyFill') return apply(message);
     };
     window.addEventListener('pagehide', () => { clear(); developerRecord = undefined; developerEntries = []; });
     browser.runtime.onMessage.addListener(listener);
-    globalThis.__formFillContentHandler = { version: 14, listener, disposeInline: installInline(),
+    globalThis.__formFillContentHandler = { version: 15, listener, disposeInline: installInline(target => { inlineTarget = target; }),
         developerFieldID: element => developerRecord?.url === location.href ? developerEntries.find(entry => entry.element === element)?.field.id ?? null : null,
         developerRecord: () => developerRecord?.url === location.href ? developerRecord : null,
         matchesSnapshot: (id) => matches(id)

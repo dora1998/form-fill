@@ -75,7 +75,7 @@ const groupIDs = () => {
     const scope = (element: Control) => (element.autocomplete || '').toLowerCase().split(/\s+/)
         .filter(token => token.startsWith('section-') || ['shipping', 'billing'].includes(token)).join(' ');
     const keys: { owner: Element; scope: string }[] = [];
-    return new Map(all.map((element, index) => {
+    const groups = new Map<Control, string>(all.map((element, index) => {
         let value = scope(element);
         if (!value) {
             const neighbours = all.map((control, i) => ({ i, value: scope(control) }))
@@ -87,6 +87,29 @@ const groupIDs = () => {
         if (group < 0) { group = keys.length; keys.push({ owner: owners[index], scope: value }); }
         return [element, `g${group}`] as const;
     }));
+    // Repeated numbered sets in one table have no semantic container. Require
+    // multiple repeated labels so address lines and split postal codes stay together.
+    const baseLabel = (element: Control) => fieldLabel(element).replaceAll('必須', '').replace(/\s+/g, '')
+        .replace(/[0-9０-９]+$/, '') + (postalControl(element) && 'maxLength' in element && [3, 4].includes(element.maxLength) ? `:${element.maxLength}` : '');
+    for (const id of new Set(groups.values())) {
+        const controls = all.filter(element => groups.get(element) === id);
+        const labels = controls.map(baseLabel);
+        const repeated = new Set(labels.filter((label, index) => label && labels.indexOf(label) !== index));
+        const numberedRepeat = controls.some((element, index) => repeated.has(labels[index])
+            && /[0-9０-９]+$/.test(fieldLabel(element).replaceAll('必須', '').replace(/\s+/g, '')));
+        if (repeated.size < 2 || !numberedRepeat) continue;
+        const seen = new Set<string>();
+        let part = 0;
+        controls.forEach((element, index) => {
+            const label = labels[index];
+            if (repeated.has(label) && seen.has(label)) { part++; seen.clear(); }
+            if (repeated.has(label)) seen.add(label);
+            groups.set(element, `${id}_${part}`);
+        });
+    }
+    // Keep wire IDs opaque and compact, including inferred sets.
+    const ids = [...new Set(groups.values())];
+    return new Map(all.map(element => [element, `g${ids.indexOf(groups.get(element)!)}`]));
 };
 const metadata = (element: Control, id: string, groups = groupIDs(), readOccupied = true): FormField => ({
     id, groupID: groups.get(element)!, tag: element.tagName.toLowerCase(), type: element.type || '',

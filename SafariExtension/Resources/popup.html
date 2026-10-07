@@ -9,6 +9,12 @@
   <button id="analyze" type="button">このページを解析</button>
   <p id="fill-status" role="status" aria-live="polite"></p>
   <button id="cancel-quick" type="button" hidden>キャンセル</button>
+  <section id="targets" hidden>
+    <label for="target-group">入力するグループ</label>
+    <select id="target-group"></select>
+    <p id="target-fields" class="note"></p>
+    <button id="analyze-target" type="button">このグループを解析</button>
+  </section>
   <section id="preview" hidden>
     <p id="site"></p>
     <button id="unlock" type="button" disabled>認証して登録情報を確認する</button>
