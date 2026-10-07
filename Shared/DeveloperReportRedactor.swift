@@ -14,7 +14,14 @@ enum DeveloperReportRedactor {
         if let p = profile {
             let values = [p.family, p.given, p.familyKana, p.givenKana, p.postal, p.prefecture,
                           p.municipality, p.locality, p.street, p.building]
-                + FieldKind.allCases.compactMap { p.value(for: $0) }
+                + FieldKind.nonAddressKinds.compactMap { p.value(for: $0) }
+                // Mask every address subset now that combinations are not enum cases.
+                + (1..<(1 << AddressComponent.allCases.count)).compactMap { mask -> String? in
+                    let parts = AddressComponent.allCases.enumerated().compactMap { index, component in
+                        mask & (1 << index) != 0 ? component : nil
+                    }
+                    return p.value(for: .address(parts))
+                }
             for value in values where !value.isEmpty {
                 var variants = Set([value, value.replacingOccurrences(of: " ", with: ""),
                                     value.replacingOccurrences(of: " ", with: "　")])

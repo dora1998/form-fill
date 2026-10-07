@@ -40,11 +40,51 @@ struct FormField: Codable {
     }
 }
 
-enum FieldKind: String, Codable, CaseIterable {
+enum AddressComponent: String, Codable, CaseIterable {
+    // Canonical output order belongs to the app, never to model array order.
+    case prefecture, municipality, locality, street, building
+}
+
+enum FieldKind: Equatable {
     case family, given, fullName, familyKana, givenKana, fullKana
     case postal, postalFirst3, postalLast4
-    case prefecture, prefectureMunicipality, municipality, locality, street, building
-    case localityStreet, municipalityLocality, municipalityLocalityStreet, addressWithoutPrefecture, fullAddress, prefectureMunicipalityLocalityStreet, unknown
+    case address([AddressComponent])
+    case unknown
+
+    static let nonAddressKinds: [FieldKind] = [.family, .given, .fullName, .familyKana, .givenKana, .fullKana,
+        .postal, .postalFirst3, .postalLast4, .unknown]
+    static let permittedKinds = nonAddressKinds.map(\.rawValue) + ["address"]
+
+    var rawValue: String {
+        switch self {
+        case .family: return "family"
+        case .given: return "given"
+        case .fullName: return "fullName"
+        case .familyKana: return "familyKana"
+        case .givenKana: return "givenKana"
+        case .fullKana: return "fullKana"
+        case .postal: return "postal"
+        case .postalFirst3: return "postalFirst3"
+        case .postalLast4: return "postalLast4"
+        case .address: return "address"
+        case .unknown: return "unknown"
+        }
+    }
+    var components: [AddressComponent] {
+        guard case let .address(parts) = self else { return [] }
+        return AddressComponent.allCases.filter { parts.contains($0) }
+    }
+    init?(kind: String, components: [String]) {
+        guard kind == "address" else {
+            guard components.isEmpty, let value = Self.nonAddressKinds.first(where: { $0.rawValue == kind }) else { return nil }
+            self = value
+            return
+        }
+        guard !components.isEmpty, components.count <= AddressComponent.allCases.count,
+              Set(components).count == components.count,
+              components.allSatisfy({ AddressComponent(rawValue: $0) != nil }) else { return nil }
+        self = .address(AddressComponent.allCases.filter { components.contains($0.rawValue) })
+    }
 }
 
 // Synthetic data only. The classifier never receives this profile.
@@ -88,18 +128,17 @@ extension ProfileValues {
         case .postal: return postal
         case .postalFirst3: return String(postal.prefix(3))
         case .postalLast4: return String(postal.suffix(4))
-        case .prefecture: return prefecture
-        case .prefectureMunicipality: return prefecture + municipality
-        case .municipality: return municipality
-        case .locality: return locality
-        case .street: return street
-        case .building: return building
-        case .localityStreet: return locality + street
-        case .municipalityLocality: return municipality + locality
-        case .municipalityLocalityStreet: return municipality + locality + street
-        case .addressWithoutPrefecture: return municipality + locality + street + " " + building
-        case .prefectureMunicipalityLocalityStreet: return prefecture + municipality + locality + street
-        case .fullAddress: return prefecture + municipality + locality + street + " " + building
+        case .address(let parts):
+            guard !parts.isEmpty, Set(parts).count == parts.count else { return nil }
+            return AddressComponent.allCases.filter { parts.contains($0) }.map { part in
+                switch part {
+                case .prefecture: return prefecture
+                case .municipality: return municipality
+                case .locality: return locality
+                case .street: return street
+                case .building: return (parts.count > 1 ? " " : "") + building
+                }
+            }.joined()
         case .unknown: return nil
         }
     }
@@ -146,12 +185,12 @@ enum FillPlanner {
                 let barePlaceholder = placeholder.isEmpty || ["住所", "ご住所", "住所1"].contains(placeholder)
                 let generic = barePlaceholder && (["住所", "ご住所", "住所1", "住所１"].contains(label)
                     || (label.isEmpty && field.numberedAddressLine == 1))
-                guard kind == .fullAddress || kind == .addressWithoutPrefecture || (kind == nil && generic) else { continue }
-                let base: FieldKind = kind ?? .fullAddress
+                guard kind == .address([.prefecture, .municipality, .locality, .street, .building]) || kind == .address([.municipality, .locality, .street, .building]) || (kind == nil && generic) else { continue }
+                let base: FieldKind = kind ?? .address([.prefecture, .municipality, .locality, .street, .building])
                 let siblings = group.filter { $0.id != field.id }
                 let covered = siblings.reduce(into: Set<String>()) { components, sibling in
                     let siblingKind = kinds[sibling.id] ?? .unknown
-                    if siblingKind != .fullAddress && siblingKind != .addressWithoutPrefecture {
+                    if siblingKind != .address([.prefecture, .municipality, .locality, .street, .building]) && siblingKind != .address([.municipality, .locality, .street, .building]) {
                         components.formUnion(addressComponents(siblingKind))
                     }
                 }
@@ -159,8 +198,8 @@ enum FillPlanner {
                 let remaining = addressComponents(base).subtracting(covered)
                 // Only infer a bare address when siblings explain its layout.
                 if kind == nil && !covered.contains("municipality") && !covered.contains("building") { continue }
-                if let replacement = FieldKind.allCases.first(where: { !remaining.isEmpty && addressComponents($0) == remaining }) {
-                    result[field.id] = replacement
+                if !remaining.isEmpty {
+                    result[field.id] = .address(AddressComponent.allCases.filter { remaining.contains($0.rawValue) })
                 }
             }
         }
@@ -208,28 +247,14 @@ enum FillPlanner {
             // Only region controls in the same ownership group constrain the default.
             let siblings = fieldGroups(fields).first { $0.contains { $0.id == group[0].id } } ?? []
             guard !siblings.contains(where: { !ids.contains($0.id) && !addressComponents(kinds[$0.id] ?? .unknown).isEmpty }) else { continue }
-            defaults[group[0].id] = .prefectureMunicipality
-            defaults[group[1].id] = .localityStreet
-            defaults[group[2].id] = .building
+            defaults[group[0].id] = .address([.prefecture, .municipality])
+            defaults[group[1].id] = .address([.locality, .street])
+            defaults[group[2].id] = .address([.building])
         }
         return defaults
     }
     static func addressComponents(_ kind: FieldKind) -> Set<String> {
-        switch kind {
-        case .prefecture: return ["prefecture"]
-        case .prefectureMunicipality: return ["prefecture", "municipality"]
-        case .municipality: return ["municipality"]
-        case .locality: return ["locality"]
-        case .street: return ["street"]
-        case .building: return ["building"]
-        case .localityStreet: return ["locality", "street"]
-        case .municipalityLocality: return ["municipality", "locality"]
-        case .municipalityLocalityStreet: return ["municipality", "locality", "street"]
-        case .addressWithoutPrefecture: return ["municipality", "locality", "street", "building"]
-        case .prefectureMunicipalityLocalityStreet: return ["prefecture", "municipality", "locality", "street"]
-        case .fullAddress: return ["prefecture", "municipality", "locality", "street", "building"]
-        default: return []
-        }
+        Set(kind.components.map(\.rawValue))
     }
     static func overlappingAddressGroups(fields: [FormField], kinds: [String: FieldKind]) -> [[FormField]] {
         let groups = fieldGroups(fields).flatMap { group in
@@ -245,6 +270,19 @@ enum FillPlanner {
                 seen.formUnion(components)
             }
             return false
+        }
+    }
+    // A partial component allocation is a reason to ask the model to check its
+    // examples again, never a reason to insert the missing component ourselves.
+    static func addressReviewBatches(fields: [FormField], kinds: [String: FieldKind], sources: [String: String]) -> [[FormField]] {
+        let overlappingIDs = Set(overlappingAddressGroups(fields: fields, kinds: kinds).flatMap { $0.map(\.id) })
+        let core = Set(["municipality", "locality", "street"])
+        return fieldGroups(fields).flatMap { group -> [[FormField]] in
+            let covered = group.reduce(into: Set<String>()) { $0.formUnion(addressComponents(kinds[$1.id] ?? .unknown)) }
+            let incomplete = covered.intersection(core).count >= 2 && !core.isSubset(of: covered)
+            guard incomplete || group.contains(where: { overlappingIDs.contains($0.id) }) else { return [] }
+            let candidates = group.filter { sources[$0.id] == "model" && !addressComponents(kinds[$0.id] ?? .unknown).isEmpty }
+            return stride(from: 0, to: candidates.count, by: 4).map { Array(candidates[$0..<min($0 + 4, candidates.count)]) }
         }
     }
     static func overlappingIdentityIDs(fields: [FormField], kinds: [String: FieldKind]) -> Set<String> {
@@ -273,20 +311,24 @@ enum FillPlanner {
         }
         return conflicts
     }
-    static func modelOutputIssues(ids: [String], kinds: [String], expectedIDs: [String]) -> [String] {
+    static func modelOutputIssues(ids: [String], kinds: [String], components: [[String]], expectedIDs: [String]) -> [String] {
         var issues = [String]()
         if ids.count != expectedIDs.count { issues.append("count_mismatch") }
         if Set(ids).count != ids.count { issues.append("duplicate_ids") }
         if !Set(ids).subtracting(expectedIDs).isEmpty { issues.append("unexpected_ids") }
         if !Set(expectedIDs).subtracting(ids).isEmpty { issues.append("missing_ids") }
-        if kinds.count != ids.count || kinds.contains(where: { FieldKind(rawValue: $0) == nil }) { issues.append("invalid_kind") }
+        if kinds.count != ids.count || kinds.contains(where: { !FieldKind.permittedKinds.contains($0) }) { issues.append("invalid_kind") }
+        if components.count != ids.count { issues.append("component_count_mismatch") }
+        else if kinds.count == ids.count && kinds.allSatisfy({ FieldKind.permittedKinds.contains($0) }) && zip(kinds, components).contains(where: { FieldKind(kind: $0.0, components: $0.1) == nil }) {
+            issues.append("invalid_components")
+        }
         return issues
     }
     static func safeModelIDs(_ ids: [String]) -> [String] {
         ids.map { $0.range(of: "^f[0-9]{1,2}$", options: .regularExpression) != nil ? $0 : "invalid" }
     }
     static func safeModelKinds(_ kinds: [String]) -> [String] {
-        kinds.map { FieldKind(rawValue: $0)?.rawValue ?? "invalid" }
+        kinds.map { FieldKind.permittedKinds.contains($0) ? $0 : "invalid" }
     }
     // Classification uses metadata only, so occupied fields can be diagnosed too.
     static func fieldsNeedingClassification(_ fields: [FormField], kinds: [String: FieldKind]) -> [FormField] {
@@ -335,7 +377,7 @@ enum FillPlanner {
         let autocompleteKind = field.autocomplete.lowercased().split(separator: " ").last.map(String.init) ?? ""
         if ["email", "country", "country-name", "organization", "organization-title"].contains(autocompleteKind)
             || (autocompleteKind.hasPrefix("tel") && !field.isPostalControl) || autocompleteKind.hasPrefix("cc-") { return .unknown }
-        if field.isPrefectureSelect { return .prefecture }
+        if field.isPrefectureSelect { return .address([.prefecture]) }
         let rules: [(String, FieldKind)] = [
             ("^(姓|せい|セイ|姓[（(].*(かな|カナ|ふりがな|フリガナ).*[）)])$", .familyKana),
             ("^(名|めい|メイ|名[（(].*(かな|カナ|ふりがな|フリガナ).*[）)])$", .givenKana)
@@ -348,24 +390,28 @@ enum FillPlanner {
         if label.range(of: "^(お名前|氏名|フリガナ|ふりがな)[（(]名[）)]$", options: .regularExpression) != nil { return kana ? .givenKana : .given }
         for (pattern, kind) in rules where label.range(of: pattern, options: .regularExpression) != nil { return kind }
         // Explicit component lists must not lose a component in model classification.
-        if label.range(of: "(市区町村郡|市区町村|市町村)以降", options: .regularExpression) != nil { return .addressWithoutPrefecture }
-        if label.range(of: "(市区町村|市町村).*番地", options: .regularExpression) != nil { return .municipalityLocalityStreet }
-        if label.range(of: "(町名|町域).*番地", options: .regularExpression) != nil { return .localityStreet }
-        if ["建物名", "マンション名", "アパート名", "方書"].contains(where: label.contains) && !label.contains("番地") { return .building }
-        if label.contains("都道府県") { return .prefecture }
-        // Some city-labelled fields explicitly show a city, ward and town in their example.
-        if label == "市区町村" && field.placeholder.range(of: "市.+区.+(町|丁目)", options: .regularExpression) != nil { return .municipalityLocality }
-        // Other examples need sibling context to determine the intended components.
+        if label.range(of: "(市区町村郡|市区町村|市町村)以降", options: .regularExpression) != nil { return .address([.municipality, .locality, .street, .building]) }
+        if label.range(of: "(市区町村|市町村).*番地", options: .regularExpression) != nil { return .address([.municipality, .locality, .street]) }
+        if label.range(of: "(町名|町域).*番地", options: .regularExpression) != nil { return .address([.locality, .street]) }
+        if ["建物名", "マンション名", "アパート名", "方書"].contains(where: label.contains) && !label.contains("番地") { return .address([.building]) }
+        if label.contains("都道府県") { return .address([.prefecture]) }
+        // Examples need sibling context to determine the intended components;
+        // town names need not contain 町 or follow a city+ward pattern.
         if label == "市区町村" && !field.placeholder.isEmpty { return nil }
         let exact: [String: FieldKind] = ["氏名": .fullName, "お名前": .fullName, "姓名": .fullName,
-            "フリガナ": .fullKana, "ふりがな": .fullKana, "都道府県": .prefecture, "市区町村": .municipality,
-            "町名": .locality, "町域": .locality, "番地": .street, "丁目・番地・号": .street,
-            "町名・番地": .localityStreet, "建物名・部屋番号": .building, "建物名": .building,
-            "住所全体": .fullAddress]
+            "フリガナ": .fullKana, "ふりがな": .fullKana, "都道府県": .address([.prefecture]), "市区町村": .address([.municipality]),
+            "町名": .address([.locality]), "町域": .address([.locality]), "番地": .address([.street]), "丁目・番地・号": .address([.street]),
+            "町名・番地": .address([.locality, .street]), "建物名・部屋番号": .address([.building]), "建物名": .address([.building]),
+            "住所全体": .address([.prefecture, .municipality, .locality, .street, .building])]
         if let kind = exact[label] { return kind }
         let token = field.autocomplete.lowercased().split(separator: " ").last.map(String.init) ?? ""
+        // Address autocomplete describes a level, not necessarily every component
+        // accepted by the control. Let the model interpret examples before fixing
+        // a kind from this hint. Explicit component labels above still take priority.
+        if ["address-level1", "address-level2", "street-address"].contains(token)
+            && !field.placeholder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return nil }
         let standard: [String: FieldKind] = ["family-name": .family, "given-name": .given, "name": .fullName,
-            "address-level1": .prefecture, "address-level2": .municipality, "street-address": .addressWithoutPrefecture]
+            "address-level1": .address([.prefecture]), "address-level2": .address([.municipality]), "street-address": .address([.municipality, .locality, .street, .building])]
         if let kind = standard[token] { return kind }
         if token == "postal-code" || label == "郵便番号" || field.isPostalControl {
             if field.maxLength == 3 { return .postalFirst3 }
@@ -378,7 +424,7 @@ enum FillPlanner {
     static func plan(fields: [FormField], kinds: [String: FieldKind], sources: [String: String], modelFailed: Bool, profile: any ProfileValues) -> [String: Any] {
         let kinds = contextualAddressKinds(fields: fields, kinds: kinds)
         var items = [[String: Any]]()
-        var skipped = [[String: String]]()
+        var skipped = [[String: Any]]()
         let overlappingIDs = Set(overlappingAddressGroups(fields: fields, kinds: kinds).flatMap { $0.map(\.id) })
         let duplicateIdentityIDs = overlappingIdentityIDs(fields: fields, kinds: kinds)
         for field in fields {
@@ -418,10 +464,10 @@ enum FillPlanner {
             if overlappingIDs.contains(field.id) { reason = "住所欄の構成が重複しています" }
             if let reason {
                 skipped.append(["id": field.id, "label": field.displayLabel, "reason": reason,
-                                "kind": kind.rawValue, "source": sources[field.id] ?? "unclassified"])
+                                "kind": kind.rawValue, "components": kind.components.map(\.rawValue), "source": sources[field.id] ?? "unclassified"])
                 continue
             }
-            items.append(["id": field.id, "label": field.displayLabel, "kind": kind.rawValue, "value": value!, "displayValue": field.tag == "select" ? profile.prefecture : value!, "source": sources[field.id] ?? "model", "overwritesExisting": field.occupied])
+            items.append(["id": field.id, "label": field.displayLabel, "kind": kind.rawValue, "components": kind.components.map(\.rawValue), "value": value!, "displayValue": field.tag == "select" ? profile.prefecture : value!, "source": sources[field.id] ?? "model", "overwritesExisting": field.occupied])
         }
         return ["version": 1, "ok": true, "profileID": profile.id, "items": items, "skipped": skipped, "modelFailed": modelFailed]
     }

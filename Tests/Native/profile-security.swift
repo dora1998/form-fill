@@ -48,9 +48,29 @@ func check(_ condition: Bool, line: UInt = #line) { precondition(condition, "che
         let base: [String: Any] = ["version": 1, "type": "analyzeForm", "requestID": UUID().uuidString,
                                   "tabID": 5, "origin": "https://example.test", "fields": [field]]
         let classification: [String: Any] = ["version": 1, "ok": true, "requestID": base["requestID"]!,
-            "classifications": [["id": "f0", "kind": "family", "source": "rule", "label": "姓"]]]
+            "classifications": [["id": "f0", "kind": "family", "components": [String](), "source": "rule", "label": "姓"]]]
         func request(_ type: String, _ id: String) -> [String: Any] {
             var r = base; r["type"] = type; r["sessionID"] = id; return r
+        }
+        // Registration validates arrays before authentication, and model order
+        // cannot change the order of address values in the authorized plan.
+        let addressLoader = TestLoader(profile)
+        let addressService = ProfileFillService(load: { try await addressLoader.read($0) })
+        var addressBase = base
+        var addressField = field; addressField["label"] = "市区町村名"; addressField["autocomplete"] = "address-level2"
+        addressBase["fields"] = [addressField]
+        var addressClassification = classification
+        addressClassification["classifications"] = [["id": "f0", "kind": "address", "components": ["locality", "municipality"], "source": "model"]]
+        let addressID = await addressService.register(addressBase, classification: addressClassification)["sessionID"] as! String
+        let addressPlan = await addressService.handle(request("prepareFill", addressID))
+        let addressItem = (addressPlan["items"] as! [[String: Any]])[0]
+        check(addressItem["value"] as? String == profile.municipality + profile.locality)
+        check(addressItem["components"] as? [String] == ["municipality", "locality"])
+        for (kind, components) in [("address", [String]()), ("address", ["locality", "locality"]),
+                                   ("address", ["country"]), ("family", ["street"]), ("municipalityLocality", [String]())] {
+            var invalidClassification = classification
+            invalidClassification["classifications"] = [["id": "f0", "kind": kind, "components": components]]
+            check((await addressService.register(addressBase, classification: invalidClassification))["error"] as? String == "invalid_request")
         }
         func session(_ service: ProfileFillService) async -> String {
             let response = await service.register(base, classification: classification)

@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>入れ子の住所欄と入力例</title>
+<form onsubmit="window.submissions = (window.submissions || 0) + 1; return false">
+  <fieldset>
+    <legend>登録情報</legend>
+    <div class="entry">
+      <div><span>必須</span><span>市区町村名</span></div>
+      <div><div><div><input autocomplete="address-level2" placeholder="例）架空区青空"></div></div></div>
+    </div>
+    <div class="entry">
+      <div><span>必須</span><span>丁目番地</span></div>
+      <div><div><div><input autocomplete="address-line1" placeholder="例）2-3-4"></div></div></div>
+    </div>
+    <div class="entry">
+      <div><span>任意</span><span>建物名</span></div>
+      <div><div><div><input autocomplete="address-line2" placeholder="例）サンプルハイツ202号室"></div></div></div>
+    </div>
+    <div class="entry">
+      <div><span>備考</span></div>
+      <div><div><div><input></div></div></div>
+    </div>
+  </fieldset>
+</form>

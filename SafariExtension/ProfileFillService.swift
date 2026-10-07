@@ -41,16 +41,19 @@ actor ProfileFillService {
     func register(_ request: [String: Any], classification: [String: Any]) -> [String: Any] {
         guard let (requestID, fields) = FillPlanner.decode(request), let (tabID, origin) = Self.scope(request),
               classification["ok"] as? Bool == true,
-              let raw = classification["classifications"] as? [[String: String]], raw.count == fields.count,
-              Set(raw.compactMap { $0["id"] }) == Set(fields.map(\.id)),
-              raw.allSatisfy({ FieldKind(rawValue: $0["kind"] ?? "") != nil }) else { return failure("invalid_request") }
+              let raw = classification["classifications"] as? [[String: Any]], raw.count == fields.count,
+              Set(raw.compactMap { $0["id"] as? String }) == Set(fields.map(\.id)),
+              raw.allSatisfy({
+                  guard let kind = $0["kind"] as? String, let components = $0["components"] as? [String] else { return false }
+                  return FieldKind(kind: kind, components: components) != nil
+              }) else { return failure("invalid_request") }
         purge()
         // Bounded memory, including website metadata; do not persist sessions.
         if sessions.count >= 8 { return failure("too_many_requests") }
         let id = UUID().uuidString
         sessions[id] = Session(requestID: requestID, tabID: tabID, origin: origin, fields: fields,
-            kinds: Dictionary(uniqueKeysWithValues: raw.map { ($0["id"]!, FieldKind(rawValue: $0["kind"]!)!) }),
-            sources: Dictionary(uniqueKeysWithValues: raw.map { ($0["id"]!, $0["source"] ?? "model") }),
+            kinds: Dictionary(uniqueKeysWithValues: raw.map { ($0["id"] as! String, FieldKind(kind: $0["kind"] as! String, components: $0["components"] as! [String])!) }),
+            sources: Dictionary(uniqueKeysWithValues: raw.map { ($0["id"] as! String, $0["source"] as? String ?? "model") }),
             modelFailed: classification["modelFailed"] as? Bool ?? false, expires: now() + 120)
         var result = classification
         result["sessionID"] = id

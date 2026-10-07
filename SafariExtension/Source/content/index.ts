@@ -6,7 +6,7 @@ import { unchanged } from './snapshot';
 import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction, Control } from '../shared/contracts';
 (() => {
     const installed = globalThis.__formFillContentHandler;
-    if (installed?.version === 15) return;
+    if (installed?.version === 16) return;
     if (installed) {
         browser.runtime.onMessage.removeListener(installed.listener);
         installed.disposeInline?.();
@@ -73,7 +73,7 @@ import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction
     };
     window.addEventListener('pagehide', () => { clear(); developerRecord = undefined; developerEntries = []; });
     browser.runtime.onMessage.addListener(listener);
-    globalThis.__formFillContentHandler = { version: 15, listener, disposeInline: installInline(target => { inlineTarget = target; }),
+    globalThis.__formFillContentHandler = { version: 16, listener, disposeInline: installInline(target => { inlineTarget = target; }),
         developerFieldID: element => developerRecord?.url === location.href ? developerEntries.find(entry => entry.element === element)?.field.id ?? null : null,
         developerRecord: () => developerRecord?.url === location.href ? developerRecord : null,
         matchesSnapshot: (id) => matches(id)

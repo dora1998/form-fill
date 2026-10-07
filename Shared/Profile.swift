@@ -23,7 +23,7 @@ struct Profile: Codable, Equatable, ProfileValues {
               [family, given, familyKana, givenKana, municipality, street].allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
               postal.range(of: "^[0-9]{7}$", options: .regularExpression) != nil,
               Self.prefectures.contains(prefecture),
-              (value(for: .fullAddress) ?? "").utf16.count <= 300 else { throw ProfileError.invalidProfile }
+              (value(for: .address([.prefecture, .municipality, .locality, .street, .building])) ?? "").utf16.count <= 300 else { throw ProfileError.invalidProfile }
         return self
     }
 }

@@ -193,7 +193,7 @@ unlockButton.addEventListener('click', async () => {
     try {
         const result = await withTimeout(browser.runtime.sendMessage({ type: 'prepareFill', ...saved }));
         await recordPhase(saved, 'prepare', { ok: result.ok, error: result.error,
-            items: result.items?.map((item: { id: string; kind?: string }) => ({ id: item.id, kind: item.kind })), skipped: result.skipped });
+            items: result.items?.map(item => ({ id: item.id, kind: item.kind, components: item.components })), skipped: result.skipped });
         if (token !== generation) return;
         if (!result.ok || !Array.isArray(result.items) || !Array.isArray(result.skipped)) throw new Error(result.error ?? 'invalid_response');
         lastAnalysis = FormFillDebug.analysis('success', result); // allowlisted summary, never retains values
