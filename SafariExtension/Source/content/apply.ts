@@ -1,6 +1,6 @@
-import { candidates } from './fields';
-import type { Snapshot, FillRequest, FillResponse, DiagnosticRecord } from '../shared/contracts';
-import { unchanged } from './snapshot';
+import type { Snapshot } from './types';
+import type { FillRequest, FillResponse, DiagnosticRecord } from '../shared/contracts';
+import { unchanged, scanDocument, snapshotUnchanged } from './snapshot';
 export function createApply(takeSnapshot: () => Snapshot | undefined, getRecord: () => DiagnosticRecord | undefined) {
     async function apply(message: FillRequest): Promise<FillResponse> {
         const saved = takeSnapshot();
@@ -25,9 +25,7 @@ export function createApply(takeSnapshot: () => Snapshot | undefined, getRecord:
                 before: saved.entries.map(entry => ({ id: entry.field.id, value: entry.element.value })) };
         if (!saved || message.requestID !== saved.requestID || saved.url !== location.href
             || !Array.isArray(message.items) || message.items.length > 40
-            || saved.entries.some(entry => !unchanged(entry) || entry.element.value !== entry.initialValue)
-            || candidates().length !== saved.all.length
-            || candidates().some((element, index) => element !== saved.all[index])) {
+            || !snapshotUnchanged(saved)) {
             return finish({ version: 1, ok: false, error: 'stale_plan' });
         }
         const ids = new Set();
@@ -54,11 +52,11 @@ export function createApply(takeSnapshot: () => Snapshot | undefined, getRecord:
             }
             targets.push({ entry, item });
         }
-        const results = [];
+        const results: { id: string; status: 'filled' | 'changed_by_page' | 'failed' }[] = [];
         for (const { entry, item } of targets) {
             observe('before_field', item.id);
             // Site address completion may have changed another field after an earlier input.
-            if (saved.url !== location.href || document.visibilityState === 'hidden' || !unchanged(entry) || entry.element.value !== entry.initialValue) {
+            if (saved.url !== location.href || document.visibilityState === 'hidden' || !unchanged(entry, scanDocument().groups) || entry.element.value !== entry.initialValue) {
                 observe('changed_by_page', item.id);
                 results.push({ id: item.id, status: 'changed_by_page' });
                 continue;

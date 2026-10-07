@@ -17,19 +17,19 @@ test('debug extraction never reads values or option contents, including excluded
     options: { length: 2, get 0() { throw Error('options must never be read'); } }
   });
   const controls = [field('text'), field('select-one'), field('password'), field('email'), field('tel')];
-  const context = { Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+  const context = { Element: class {}, Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
     getComputedStyle: () => ({ visibility: 'visible' }),
     document: { querySelectorAll: selector => selector === 'iframe' ? [{}] : controls } };
   vm.createContext(context);
   vm.runInContext(resource('debug-page.js'), context);
-  const capture = () => vm.runInContext(`(${context.FormFillCapturePage.toString()})(null)`, context);
+  const capture = () => vm.runInContext('FormFillCapturePage(null)', context);
   const result = plain(capture());
   assert.equal(result.controlCount, 5);
   assert.equal(result.eligibleCount, 2);
   assert.equal(result.iframeCount, 1);
   assert.equal(result.fields[1].optionCount, 2);
   assert.equal(result.fields[2].eligible, false);
-  assert.equal(result.fields[0].fieldID, 'f0');
+  assert.equal(result.fields[0].fieldID, null, 'without a snapshot the collector must not guess field IDs');
   // Comment nodes near excluded controls must not be treated as Elements.
   controls[2].parentElement = { matches: () => false };
   controls[2].previousSibling = { nodeType: 8, textContent: secret };
@@ -46,7 +46,7 @@ test('debug extraction never reads values or option contents, including excluded
   context.document.querySelectorAll = () => { throw Error(secret); };
   const failed = plain(capture());
   assert.equal(failed.collectorError, 'query_controls');
-  assert.equal(failed.collectorVersion, 4);
+  assert.equal(failed.collectorVersion, 5);
   assert.equal(JSON.stringify(failed).includes(secret), false);
 
 });
@@ -247,4 +247,16 @@ test('capture diagnostics export only fixed stages and response shape', () => {
     resultCount: 1, resultType: 'object', hasInjectionError: true, collectorError: 'field_metadata'
   });
   assert.equal(JSON.stringify(report).includes(secret), false);
+});
+
+
+test('reasonCode survives display-text changes and report rebuilding', () => {
+  const context = {};
+  vm.runInNewContext(resource('debug-info.js'), context);
+  for (const reasonCode of ['empty_profile', 'value_too_long', 'unclassified', 'length_constraint', 'address_overlap']) {
+    const analysis = context.FormFillDebug.analysis('success', { skipped: [{ id: 'f0', reasonCode, reason: 'changed display text' }] });
+    const report = context.FormFillDebug.report(undefined, analysis, '0.1.0');
+    assert.equal(report.lastAnalysis.skipped[0].reason, reasonCode);
+    assert.equal(JSON.stringify(report).includes('changed display text'), false);
+  }
 });

@@ -1,4 +1,5 @@
-import type { DiagnosticRecord, Control } from '../shared/contracts';
+import type { Control } from '../content/types';
+import type { DiagnosticRecord } from '../shared/contracts';
 // Self-contained for scripting.executeScript; no page code is evaluated.
 export const captureDeveloperPage = () => {
     const limits = { documents: 20, nodes: 30000, controls: 1000, options: 1000, htmlCharacters: 2000000 };
@@ -97,4 +98,3 @@ export const captureDeveloperPage = () => {
             'HTML contains site scripts. Inspect as text; do not run as a trusted page. Dynamic site behaviour requires the original site.',
             'lastRun is the latest opted-in analysis in this top document, cleared by normal analysis or document reload; no automatic disk storage; explicit exports are saved in the app.'] };
 };
-globalThis.FormFillCaptureDeveloperPage = captureDeveloperPage;

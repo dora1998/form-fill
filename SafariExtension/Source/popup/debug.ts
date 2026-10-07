@@ -1,3 +1,4 @@
+import { debugUtilities as FormFillDebug } from '../diagnostics/report';
 import type { DiagnosticRecord } from '../shared/contracts';
 export function installDebug(session: () => {
     analysis: DiagnosticRecord;
@@ -26,7 +27,10 @@ export function installDebug(session: () => {
                     throw new Error('no_tab');
                 currentURL = FormFillDebug.pageURL(tab.url).url;
                 captureStatus = 'injection_failed';
-                const results = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: FormFillCapturePage, args: [requestID ?? null] });
+                await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['debug-page.js'] });
+                // executeScript serializes this wrapper; the injected bundle owns its helpers.
+                const results = await browser.scripting.executeScript({ target: { tabId: tab.id },
+                    func: (id: string | null) => globalThis.FormFillCapturePage(id), args: [requestID ?? null] });
                 // No allFrames/frameIds target is specified: this is the top document.
                 // Safari's top frame ID need not be Chrome's numeric zero.
                 const first = Array.isArray(results) ? results[0] : undefined;

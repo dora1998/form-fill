@@ -1,16 +1,18 @@
+import FormFillCore
+import FormFillApplication
 import SwiftUI
 
 struct ContentView: View {
     private enum AppTab: Hashable { case welcome, settings }
     @State private var selectedTab: AppTab = .welcome
-
+    let dependencies: AppDependencies
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("使い方", systemImage: "sparkles.rectangle.stack", value: AppTab.welcome) {
                 NavigationStack { WelcomeView() }
             }
             Tab("設定", systemImage: "gearshape", value: AppTab.settings) {
-                NavigationStack { ProfileSettingsView() }
+                NavigationStack { ProfileSettingsView(client: dependencies.profiles, reports: dependencies.reports) }
             }
         }
         .tint(.blue)
@@ -83,4 +85,4 @@ private struct WelcomeView: View {
     }
 }
 
-#Preview { ContentView() }
+#Preview { ContentView(dependencies: .preview) }

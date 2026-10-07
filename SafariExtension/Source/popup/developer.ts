@@ -1,8 +1,11 @@
 import type { DiagnosticRecord } from '../shared/contracts';
-const saveDeveloperButton = document.querySelector<HTMLButtonElement>('#save-developer')!;
-const developerStatus = document.querySelector<HTMLElement>('#developer-status')!;
-export function installDeveloper(collect: () => Promise<void>) {
+import { captureDeveloperPage } from '../diagnostics/developer-page';
+type BrowserAPI = typeof browser;
+export function installDeveloper(document: Document, browser: BrowserAPI, collect: () => Promise<void>) {
+    const saveDeveloperButton = document.querySelector<HTMLButtonElement>('#save-developer')!;
+    const developerStatus = document.querySelector<HTMLElement>('#developer-status')!;
     saveDeveloperButton.addEventListener('click', async () => {
+        if (saveDeveloperButton.disabled) return;
         saveDeveloperButton.disabled = true;
         const main = document.querySelector<HTMLElement>('#main-flow')!;
         main.inert = true;
@@ -18,11 +21,11 @@ export function installDeveloper(collect: () => Promise<void>) {
             if (tab?.id == null)
                 throw Error('no_tab');
             await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-            let results = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: FormFillCaptureDeveloperPage });
+            let results = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: captureDeveloperPage });
             if (!results?.[0]?.result?.lastRun) {
                 developerStatus.textContent = '詳細ログ用に入力欄を解析中…';
                 await collect();
-                results = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: FormFillCaptureDeveloperPage });
+                results = await browser.scripting.executeScript({ target: { tabId: tab.id }, func: captureDeveloperPage });
             }
             report.page = results?.[0]?.result;
             report.captureErrors = results?.filter(result => result.error).map(result => String(result.error));
