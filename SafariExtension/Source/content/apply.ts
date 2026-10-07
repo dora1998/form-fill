@@ -58,7 +58,7 @@ export function createApply(takeSnapshot: () => Snapshot | undefined, getRecord:
         for (const { entry, item } of targets) {
             observe('before_field', item.id);
             // Site address completion may have changed another field after an earlier input.
-            if (!unchanged(entry) || entry.element.value !== entry.initialValue) {
+            if (saved.url !== location.href || document.visibilityState === 'hidden' || !unchanged(entry) || entry.element.value !== entry.initialValue) {
                 observe('changed_by_page', item.id);
                 results.push({ id: item.id, status: 'changed_by_page' });
                 continue;

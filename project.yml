@@ -16,9 +16,13 @@ targets:
       - App
       - Shared/DebugReportStore.swift
       - Shared/FillPlan.swift
+      - Shared/Profile.swift
+      - Shared/ProfileRepository.swift
     info:
       path: App/Info.plist
       properties:
+        ProfileKeychainAccessGroup: $(AppIdentifierPrefix)dev.formfill.profiles
+        NSFaceIDUsageDescription: 保存した姓名・住所の表示と入力を保護するためにFace IDを使用します。
         CFBundleDisplayName: Form Fill
         CFBundleDevelopmentRegion: ja
         CFBundleShortVersionString: $(MARKETING_VERSION)
@@ -37,6 +41,7 @@ targets:
       path: App/FormFill.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.formfill.app]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.formfill.profiles]
     dependencies:
       - target: FormFillExtension
         embed: true
@@ -52,6 +57,8 @@ targets:
     info:
       path: SafariExtension/Info.plist
       properties:
+        ProfileKeychainAccessGroup: $(AppIdentifierPrefix)dev.formfill.profiles
+        NSFaceIDUsageDescription: 保存した姓名・住所の表示と入力を保護するためにFace IDを使用します。
         CFBundleDisplayName: Form Fill
         CFBundleDevelopmentRegion: ja
         CFBundleShortVersionString: $(MARKETING_VERSION)
@@ -69,6 +76,7 @@ targets:
       path: SafariExtension/FormFillExtension.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.formfill.app]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.formfill.profiles]
     dependencies:
       - sdk: SafariServices.framework
 schemes:

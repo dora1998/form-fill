@@ -2,23 +2,25 @@
 <html lang="ja">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="popup.css"><title>Form Fill</title></head>
 <body>
-  <header><h1>Form Fill</h1><span class="badge">お試し</span></header>
+  <header><h1>Form Fill</h1><span class="badge">端末内で保護</span></header>
   <p class="intro">姓名・住所を、入力欄に合わせて。</p>
-  <section class="profile" aria-label="入力するプロフィール">
-    <strong>山田 太郎</strong><span>ヤマダ タロウ</span>
-    <p>100-0001 東京都千代田区千代田1-1<br>テストマンション101号室</p>
-  </section>
+  <p class="setup-note">プロフィールはForm Fillアプリの設定から登録できます。</p>
   <p class="note">入力内容を確認してから実行できます。表示した欄の既存値は上書きされます。フォームは送信しません。</p>
   <button id="analyze" type="button">このページを解析</button>
   <p id="fill-status" role="status" aria-live="polite"></p>
   <section id="preview" hidden>
     <p id="site"></p>
+    <button id="unlock" type="button" disabled>認証して登録情報を確認する</button>
     <ul id="plan"></ul>
     <ul id="skipped"></ul>
-    <button id="fill" type="button" disabled>ダミー情報を入力する</button>
+    <button id="fill" type="button" disabled>認証して入力する</button>
   </section>
   <details>
     <summary>診断・開発用ツール</summary>
+  <label><input id="developer-record" type="checkbox">詳細収録をオンにして解析する</label>
+  <p>DOM・モデルの指示と応答・入力前後の値を収録します。保存時に認証し、現在登録している姓名・住所の一致箇所をマスキングします。それ以外の個人情報やDOM内の認証情報は残る場合があります。共有前に内容を確認してください。</p>
+  <button id="save-developer" type="button">認証して詳細ログをアプリに保存</button>
+  <p id="developer-status" role="status" aria-live="polite"></p>
   <button id="check" type="button">このページで疎通を確認</button>
   <p id="status" role="status" aria-live="polite">疎通確認では入力値の読み取り・自動入力は行いません。</p>
   <button id="check-model" type="button">拡張からローカルモデルを確認</button>
@@ -28,18 +30,11 @@
   <p>ページURL・欄の構造・入力例の意味の手がかり・直近の解析結果をコピーします。URLのクエリ・フラグメント・認証情報・任意のパス識別子を除きます。入力値・ラベルや入力例の原文・選択肢・ページ本文は含みません。</p>
   <p id="debug-status" role="status" aria-live="polite"></p>
   <textarea id="debug-output" aria-label="手動コピー用デバッグ情報" readonly hidden></textarea>
-  <h2>開発用の詳細情報</h2>
-    <p>DOM・URL全文・ラベル・選択肢・入力値・モデルの指示と応答・入力前後の記録を原文で保存します。個人情報やページ内の認証トークンが含まれ得ます。共有前に内容を確認してください。</p>
-    <label><input id="developer-record" type="checkbox">次の解析で詳細を記録する</label>
-    <p>チェックして「このページを解析」から試してください。直近の記録はこのページを再読み込みするまで残ります。チェックなしの再解析で消去します。未記録でも現在のDOMを保存できます。</p>
-    <button id="save-developer" type="button">開発用データをアプリに保存</button>
-    <p>詳細情報をJSONファイルで端末内に保存します。Form Fillアプリの「保存したデバッグログ」からファイルに保存・共有・削除できます。1件20 MiBまで。保存した記録はページを閉じても残ります。</p>
-    <p id="developer-status" role="status" aria-live="polite"></p>
   </details>
-  <script src="developer-page.js"></script>
   <script src="debug-info.js"></script>
   <script src="debug-page.js"></script>
-  <script src="popup.js"></script>
+  <script src="developer-page.js"></script>
   <script src="developer-ui.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>

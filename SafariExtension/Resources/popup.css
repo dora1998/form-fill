@@ -6,6 +6,8 @@ h1 { font-size: 23px; margin: 0; letter-spacing: -.5px; }
 h2 { font-size: 16px; margin: 20px 0 10px; }
 p { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .intro { margin: 8px 0 18px; color: var(--secondary); }
+body:has(#preview:not([hidden])) > :is(.intro, .setup-note, .note) { display: none; }
+body:has(#preview:not([hidden])) > #analyze { margin-top: 12px; }
 .badge { font-size: 12px; border-radius: 20px; padding: 5px 9px; background: light-dark(#e5ecfb, #2b3857); color: light-dark(#245ac7, #a9c6ff); }
 .profile { border: 1px solid light-dark(#e0e6f0, #3a4253); background: light-dark(#fff, #242936); padding: 16px; border-radius: 16px; }
 .profile strong { display: block; font-size: 18px; margin-bottom: 4px; }

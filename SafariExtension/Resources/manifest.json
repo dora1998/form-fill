@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Form Fill",
-  "description": "日本の姓名・住所を入力欄に合わせて補完します。現在は架空のプロフィールでお試しいただけます。",
+  "description": "端末内に保護した姓名・住所を、認証して入力欄に合わせて補完します。",
   "version": "0.1.0",
   "permissions": [
     "activeTab",

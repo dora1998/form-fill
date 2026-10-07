@@ -1,66 +1,64 @@
-import { installInline } from './inline';
 import { candidates, metadata, groupIDs } from './fields';
 import { newRequestID } from '../shared/request-id';
 import { createApply } from './apply';
-import type { Snapshot, Entry, PageRequest, Sender, Extraction, DiagnosticRecord, Control } from '../shared/contracts';
+import { unchanged } from './snapshot';
+import type { Snapshot, Entry, DiagnosticRecord, PageRequest, Sender, Extraction } from '../shared/contracts';
 (() => {
     const installed = globalThis.__formFillContentHandler;
-    if (installed?.version === 11)
-        return;
+    if (installed?.version === 13) return;
     if (installed) {
         browser.runtime.onMessage.removeListener(installed.listener);
-        // Clean up the focus UI if this page still has the previous release installed.
         installed.disposeInline?.();
-    }
-    // Old releases did not retain the listener reference. Keep their in-flight
-    // preview intact; a page reload installs the current handler safely.
-    else if (globalThis.__formFillDiagnosticsInstalled)
-        return;
+    } else if (globalThis.__formFillDiagnosticsInstalled) return;
     globalThis.__formFillDiagnosticsInstalled = true;
     let snapshot: Snapshot | undefined;
-    const apply = createApply(() => { const saved = snapshot; snapshot = undefined; return saved; }, () => developerRecord);
+    let expires = 0;
     let developerRecord: DiagnosticRecord | undefined;
     let developerEntries: Entry[] = [];
-    const extract = (detailed = false, focused?: Control): Extraction => {
+    const clear = () => { snapshot = undefined; expires = 0; };
+    const matches = (id: string) => Boolean(snapshot && snapshot.requestID === id && snapshot.url === location.href
+        && performance.now() < expires && document.visibilityState !== 'hidden'
+        && snapshot.entries.every(entry => unchanged(entry) && entry.element.value === entry.initialValue)
+        && candidates().length === snapshot.all.length
+        && candidates().every((element, index) => element === snapshot!.all[index]));
+    const apply = createApply(() => {
+        const saved = snapshot && matches(snapshot.requestID) && location.protocol === 'https:' ? snapshot : undefined;
+        clear();
+        return saved;
+    }, () => developerRecord);
+    const extract = (detailed = false): Extraction => {
         const all = candidates();
         const groups = groupIDs();
         const requestID = newRequestID();
-        const selected = focused ? all.filter(element => groups.get(element) === groups.get(focused)) : all;
-        const entries = selected.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
+        const entries = all.slice(0, 40).map((element, index) => ({ element, field: metadata(element, `f${index}`, groups), initialValue: element.value }));
         snapshot = { requestID, entries, all, url: location.href };
+        expires = performance.now() + 180_000;
         developerEntries = detailed ? entries : [];
-        developerRecord = detailed ? {
-            requestID, url: location.href, capturedAt: new Date().toISOString(),
+        developerRecord = detailed ? { requestID, url: location.href, capturedAt: new Date().toISOString(),
             fields: entries.map(entry => ({ ...entry.field, initialValue: entry.initialValue })),
-            truncated: all.length > entries.length, analysis: { status: 'running' }
-        } : undefined;
+            truncated: all.length > entries.length, analysis: { status: 'running' } } : undefined;
         return { version: 1, requestID, fields: entries.map(entry => entry.field), truncated: all.length > entries.length };
     };
     const listener = (message: PageRequest, sender: Sender) => {
-        if (sender.id !== browser.runtime.id)
-            return;
+        if (sender.id !== browser.runtime.id || sender.tab) return;
         if (message?.type === 'saveDeveloperAnalysis') {
             if (!developerRecord || message.requestID !== developerRecord.requestID || developerRecord.url !== location.href)
                 return Promise.resolve({ ok: false });
             developerRecord.analysis = { ...developerRecord.analysis, ...message.analysis };
-            if (message.page)
-                developerRecord.analysisPage = message.page;
-            developerRecord.analysisCompletedAt = new Date().toISOString();
+            if (message.page) developerRecord.analysisPage = message.page;
             return Promise.resolve({ ok: true });
         }
-        if (message?.type === 'inspect')
-            return Promise.resolve({ version: 1, fieldCount: candidates().length });
-        if (message?.type === 'extract')
-            return Promise.resolve(extract(message.developerDiagnostics === true));
-        if (message?.type === 'applyFill')
-            return apply(message);
+        if (message?.type === 'inspect') return Promise.resolve({ version: 1, fieldCount: candidates().length });
+        if (message?.type === 'validateSnapshot') return Promise.resolve({ version: 1, ok: matches(message.requestID) });
+        if (message?.type === 'discardSnapshot') { if (snapshot?.requestID === message.requestID) clear(); return Promise.resolve({ version: 1, ok: true }); }
+        if (message?.type === 'extract') return Promise.resolve(extract(message.developerDiagnostics === true));
+        if (message?.type === 'applyFill') return apply(message);
     };
+    window.addEventListener('pagehide', () => { clear(); developerRecord = undefined; developerEntries = []; });
     browser.runtime.onMessage.addListener(listener);
-    globalThis.__formFillContentHandler = { version: 11, listener,
-        disposeInline: installInline(target => extract(false, target), apply),
+    globalThis.__formFillContentHandler = { version: 13, listener,
         developerFieldID: element => developerRecord?.url === location.href ? developerEntries.find(entry => entry.element === element)?.field.id ?? null : null,
         developerRecord: () => developerRecord?.url === location.href ? developerRecord : null,
-        matchesSnapshot: (requestID, all) => Boolean(snapshot && requestID === snapshot.requestID && snapshot.url === location.href
-            && all.length === snapshot.all.length && all.every((element, index) => element === snapshot!.all[index]))
+        matchesSnapshot: (id) => matches(id)
     };
 })();

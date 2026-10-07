@@ -1,6 +1,5 @@
 import Foundation
 import FoundationModels
-import OSLog
 
 @Generable
 struct ClassifiedField {
@@ -17,19 +16,6 @@ struct FormClassification {
 }
 
 struct FormClassifier {
-    // Raw metadata is logged in Debug and exported on explicit developer requests.
-    // The end-user safe report never uses this stream.
-    #if DEBUG
-    private static let debugLogger = Logger(subsystem: "dev.formfill.app.extension", category: "FormClassifier")
-    #endif
-    private static func debugLog(_ message: @autoclosure () -> String) {
-        #if DEBUG
-        let text = "[FormFill][FormClassifier] \(message())"
-        print(text)
-        // Also stream from the paired device when no debugger is attached.
-        debugLogger.notice("\(text, privacy: .public)")
-        #endif
-    }
     // Constrain the generated grammar to this batch, including its exact size.
     // Sibling context may contain rule-classified IDs that must never be emitted.
     static func outputSchema(for ids: [String]) throws -> GenerationSchema {
@@ -46,35 +32,21 @@ struct FormClassifier {
         return try GenerationSchema(root: root, dependencies: [])
     }
     static func analyze(_ message: Any?) async -> [String: Any] {
-        let analysisStarted = Date()
         guard let (requestID, fields) = FillPlanner.decode(message) else {
-            debugLog("analysis_rejected reason=invalid_request")
             return ["version": 1, "ok": false, "error": "invalid_request"]
         }
-        // Detailed export is explicitly requested by the development UI. Never
-        // attach it to a normal analysis response or the end-user safe report.
         let detailed = (message as? [String: Any])?["developerDiagnostics"] as? Bool == true
         var trace = [[String: Any]]()
-        func log(_ text: @autoclosure () -> String) {
-            if detailed {
-                trace.append(["elapsedMs": Int(Date().timeIntervalSince(analysisStarted) * 1000), "message": text()])
-            }
-            debugLog(text())
+        let started = Date()
+        func record(_ data: [String: Any]) {
+            if detailed { var event = data; event["elapsedMs"] = Int(Date().timeIntervalSince(started) * 1000); trace.append(event) }
         }
-        func finish(_ response: [String: Any]) -> [String: Any] {
-            var response = response
-            if detailed {
-                response["developerDiagnostics"] = ["trace": trace,
-                    "osVersion": ProcessInfo.processInfo.operatingSystemVersionString,
-                    "locale": Locale.current.identifier,
-                    "elapsedMs": Int(Date().timeIntervalSince(analysisStarted) * 1000)]
-            }
-            return response
+        func finish(_ data: [String: Any]) -> [String: Any] {
+            var result = data
+            if detailed { result["developerDiagnostics"] = ["trace": trace, "osVersion": ProcessInfo.processInfo.operatingSystemVersionString] }
+            return result
         }
-        log("analysis_started classifier_version=8 field_count=\(fields.count)")
-        if let data = try? JSONEncoder().encode(fields), let json = String(data: data, encoding: .utf8) {
-            log("extracted_fields_raw=\(json)")
-        }
+        record(["stage": "decoded", "fieldIDs": fields.map(\.id)])
         switch SystemLanguageModel.default.availability {
         case .unavailable(let reason):
             let code: String
@@ -84,10 +56,10 @@ struct FormClassifier {
             case .modelNotReady: code = "model_not_ready"
             @unknown default: code = "unknown"
             }
-            log("analysis_unavailable reason=\(code)")
+
             return finish(["version": 1, "ok": false, "classifierVersion": 8, "error": "model_unavailable", "reason": code])
         case .available: break
-        @unknown default: return finish(["version": 1, "ok": false, "error": "model_unavailable", "reason": "unknown"])
+        @unknown default: return ["version": 1, "ok": false, "error": "model_unavailable", "reason": "unknown"]
         }
         var kinds = [String: FieldKind]()
         var sources = [String: String]()
@@ -96,11 +68,12 @@ struct FormClassifier {
         }
         let addressDefaults = FillPlanner.numberedAddressDefaults(fields: fields, kinds: kinds)
         for (id, kind) in addressDefaults { kinds[id] = kind; sources[id] = "rule" }
-        log("numbered_address_default ids=\(addressDefaults.keys.sorted().joined(separator: ",")) layout=prefecture_municipality/locality_street/building")
+
         let contextual = FillPlanner.contextualAddressKinds(fields: fields, kinds: kinds)
         for (id, kind) in contextual where kinds[id] != kind { kinds[id] = kind; sources[id] = "rule" }
+        record(["stage": "rules", "kinds": kinds.mapValues(\.rawValue)])
         let unresolved = FillPlanner.fieldsNeedingClassification(fields, kinds: kinds)
-        log("classification_selected rule_count=\(kinds.count) model_field_count=\(unresolved.count)")
+
         var modelFailed = false
         var failures = [[String: Any]]()
         var attemptedBatches = 0
@@ -109,16 +82,13 @@ struct FormClassifier {
         let batches = FillPlanner.classificationBatches(fields: fields, kinds: kinds)
         for (batchIndex, batch) in batches.enumerated() {
             if Date() > deadline {
-                log("analysis_deadline_exceeded remaining_batches=\(batches.count - batchIndex)")
+
                 modelFailed = true
                 failures.append(["fieldIDs": batches[batchIndex...].flatMap { $0.map(\.id) }, "reason": "deadline_exceeded"])
                 break
             }
             attemptedBatches += 1
-            let batchNumber = attemptedBatches
-            let batchStarted = Date()
-            let requestedIDs = batch.map(\.id).joined(separator: ",")
-            log("batch_started batch=\(batchNumber) expected_ids=\(requestedIDs) expected_count=\(batch.count)")
+
             do {
                 // Address components depend on siblings' examples, not just their labels.
                 // Keep context bounded when a page has 40 fields. Include the closest
@@ -149,37 +119,34 @@ struct FormClassifier {
                 A 市区町村 field whose example includes town (e.g. 京都市右京区西院巽町), with a separate 番地 field and no town field, is municipalityLocality, not municipality or locality. Preserve all components indicated by its example.
                 """
                 let prompt = "Sibling context JSON: \(encodedContext)\nRequested fields JSON: \(String(data: data, encoding: .utf8)!)"
-                log("batch=\(batchNumber) instructions_raw=\(instructions)")
-                log("batch=\(batchNumber) prompt_raw=\(prompt)")
-                log("batch=\(batchNumber) sampling=greedy maximum_response_tokens=600 schema_ids=\(batch.map(\.id).joined(separator: ",")) schema_count=\(batch.count)")
+
+                record(["stage": "model_request", "batch": batchIndex, "instructions": instructions, "prompt": prompt])
                 let session = LanguageModelSession(instructions: instructions)
                 let result = try await session.respond(
                     to: prompt,
                     schema: try outputSchema(for: batch.map(\.id)),
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 600)
                 )
-                log("batch=\(batchNumber) output_raw=\(result.rawContent.jsonString)")
+
+                record(["stage": "model_response", "batch": batchIndex, "response": result.content.jsonString])
                 let output = try FormClassification(result.content).fields
+                record(["stage": "decoded_response", "fields": output.map { ["id": $0.id, "kind": $0.kind] }])
                 let issues = FillPlanner.modelOutputIssues(ids: output.map(\.id), kinds: output.map(\.kind), expectedIDs: batch.map(\.id))
-                let outputIDs = FillPlanner.safeModelIDs(output.map(\.id)).joined(separator: ",")
-                let outputKinds = FillPlanner.safeModelKinds(output.map(\.kind)).joined(separator: ",")
-                let elapsed = Int(Date().timeIntervalSince(batchStarted) * 1000)
-                log("batch_output batch=\(batchNumber) elapsed_ms=\(elapsed) output_count=\(output.count) ids=\(outputIDs) kinds=\(outputKinds)")
+
                 guard issues.isEmpty else {
                     modelFailed = true
-                    let issueCodes = issues.joined(separator: ",")
-                    log("batch_validation_failed batch=\(batchNumber) expected_count=\(batch.count) issues=\(issueCodes)")
+
                     failures.append(["fieldIDs": batch.map(\.id), "reason": "invalid_model_output", "validationCodes": issues])
                     continue
                 }
                 for item in output { kinds[item.id] = FieldKind(rawValue: item.kind); sources[item.id] = "model" }
-                log("batch_validated batch=\(batchNumber)")
+
             } catch {
                 modelFailed = true
-                log("batch=\(batchNumber) error_raw=\(String(reflecting: error))")
+
+                record(["stage": "model_error", "batch": batchIndex, "error": String(reflecting: error)])
                 let reason = failureCode(error)
-                let elapsed = Int(Date().timeIntervalSince(batchStarted) * 1000)
-                log("batch_failed batch=\(batchNumber) elapsed_ms=\(elapsed) reason=\(reason)")
+
                 failures.append(["fieldIDs": batch.map(\.id), "reason": reason])
             }
         }
@@ -187,17 +154,19 @@ struct FormClassifier {
         for group in FillPlanner.overlappingAddressGroups(fields: fields, kinds: kinds) {
             modelFailed = true
             failures.append(["fieldIDs": group.map(\.id), "reason": "overlapping_address_components"])
-            log("address_group_validation_failed ids=\(group.map(\.id).joined(separator: ",")) reason=overlapping_address_components")
+
         }
-        var plan = FillPlanner.plan(fields: fields, kinds: kinds, sources: sources, modelFailed: modelFailed)
-        plan["requestID"] = requestID
-        plan["classifierVersion"] = 8
-        plan["modelDiagnostics"] = ["available": true, "requestedFields": unresolved.count, "attemptedBatches": attemptedBatches, "failures": failures]
-        let plannedCount = (plan["items"] as? [[String: Any]])?.count ?? 0
-        let skippedCount = (plan["skipped"] as? [[String: String]])?.count ?? 0
-        let elapsed = Int(Date().timeIntervalSince(analysisStarted) * 1000)
-        log("analysis_finished elapsed_ms=\(elapsed) planned_count=\(plannedCount) skipped_count=\(skippedCount) failure_count=\(failures.count)")
-        return finish(plan)
+        // Classification contains no registered values. Only the authenticated
+        // profile service composes a fill plan.
+        var classification: [String: Any] = ["version": 1, "ok": true, "modelFailed": modelFailed,
+            "classifications": fields.map { ["id": $0.id, "kind": (kinds[$0.id] ?? .unknown).rawValue,
+                "source": sources[$0.id] ?? "unclassified", "label": $0.displayLabel] }]
+        classification["requestID"] = requestID
+        classification["classifierVersion"] = 8
+        classification["modelDiagnostics"] = ["available": true, "requestedFields": unresolved.count, "attemptedBatches": attemptedBatches, "failures": failures]
+
+        record(["stage": "classified", "result": classification])
+        return finish(classification)
     }
 
     // Error descriptions/contexts may contain website strings. Export enum codes only.

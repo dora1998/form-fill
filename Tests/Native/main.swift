@@ -4,7 +4,7 @@ func field(_ label: String, autocomplete: String = "", length: Int = 0, occupied
     FormField(id: id, groupID: groupID, tag: options.isEmpty ? "input" : "select", type: options.isEmpty ? type : "select-one", label: label, ariaLabel: "", name: name, htmlID: "", placeholder: placeholder, autocomplete: autocomplete, context: context, maxLength: length, pattern: pattern, occupied: occupied, options: options)
 }
 func plan(_ field: FormField, _ kind: FieldKind) -> [String: Any] {
-    FillPlanner.plan(fields: [field], kinds: ["f0": kind], sources: ["f0": "rule"], modelFailed: false)
+    FillPlanner.plan(fields: [field], kinds: ["f0": kind], sources: ["f0": "rule"], modelFailed: false, profile: DummyProfile())
 }
 func value(_ field: FormField, _ kind: FieldKind) -> String? { (plan(field, kind)["items"] as? [[String: Any]])?.first?["value"] as? String }
 assert(FillPlanner.rule(for: field("姓")) == .family)
@@ -63,18 +63,18 @@ let overwriteOccupied = (plan(field("市区町村", occupied: true), .municipali
 assert(overwriteOccupied["kind"] as? String == "municipality")
 assert(overwriteOccupied["source"] as? String == "rule")
 assert(overwriteOccupied["overwritesExisting"] as? Bool == true)
-let notClassified = FillPlanner.plan(fields: [field("住所", occupied: true)], kinds: [:], sources: [:], modelFailed: false)
+let notClassified = FillPlanner.plan(fields: [field("住所", occupied: true)], kinds: [:], sources: [:], modelFailed: false, profile: DummyProfile())
 let skippedUnclassified = (notClassified["skipped"] as! [[String: String]])[0]
 assert(skippedUnclassified["kind"] == "unknown")
 assert(skippedUnclassified["source"] == "unclassified")
 assert(FillPlanner.fieldsNeedingClassification([field("住所1", occupied: true)], kinds: [:]).count == 1)
 assert(FillPlanner.fieldsNeedingClassification([field("住所1")], kinds: [:]).count == 1)
 assert(FillPlanner.fieldsNeedingClassification([field("姓", occupied: true)], kinds: ["f0": .family]).isEmpty)
-let classifiedOccupied = FillPlanner.plan(fields: [field("住所1", length: 1, occupied: true)], kinds: ["f0": .municipalityLocalityStreet], sources: ["f0": "model"], modelFailed: false)
+let classifiedOccupied = FillPlanner.plan(fields: [field("住所1", length: 1, occupied: true)], kinds: ["f0": .municipalityLocalityStreet], sources: ["f0": "model"], modelFailed: false, profile: DummyProfile())
 assert((classifiedOccupied["items"] as! [[String: Any]]).isEmpty)
 assert((classifiedOccupied["skipped"] as! [[String: String]])[0]["source"] == "model")
 assert((classifiedOccupied["skipped"] as! [[String: String]])[0]["reason"] == "文字数制限に合いません")
-let validOccupied = FillPlanner.plan(fields: [field("住所1", occupied: true)], kinds: ["f0": .municipalityLocalityStreet], sources: ["f0": "model"], modelFailed: false)
+let validOccupied = FillPlanner.plan(fields: [field("住所1", occupied: true)], kinds: ["f0": .municipalityLocalityStreet], sources: ["f0": "model"], modelFailed: false, profile: DummyProfile())
 assert((validOccupied["items"] as! [[String: Any]])[0]["value"] as? String == "千代田区千代田1-1")
 assert((validOccupied["items"] as! [[String: Any]])[0]["overwritesExisting"] as? Bool == true)
 let expectedIDs = ["f1", "f2", "f3"]
@@ -91,7 +91,7 @@ assert(field("住所", placeholder: "住所12").numberedAddressLine == nil)
 assert(field("住所1", placeholder: "住所2").numberedAddressLine == nil)
 assert(FillPlanner.numberedAddressGroups(numbered).count == 1)
 let duplicateAddress = Dictionary(uniqueKeysWithValues: numbered.map { ($0.id, FieldKind.addressWithoutPrefecture) })
-let repeatedPlan = FillPlanner.plan(fields: numbered, kinds: duplicateAddress, sources: [:], modelFailed: true)
+let repeatedPlan = FillPlanner.plan(fields: numbered, kinds: duplicateAddress, sources: [:], modelFailed: true, profile: DummyProfile())
 assert((repeatedPlan["items"] as! [[String: Any]]).isEmpty)
 assert((repeatedPlan["skipped"] as! [[String: String]]).allSatisfy { $0["reason"] == "住所欄の構成が重複しています" })
 assert(FillPlanner.overlappingAddressGroups(fields: numbered, kinds: ["f1": .municipalityLocality, "f2": .street, "f3": .building]).isEmpty)
@@ -101,7 +101,7 @@ assert(FillPlanner.numberedAddressGroups(independent).map { $0.map(\.id) } == [[
 assert(FillPlanner.overlappingAddressGroups(fields: independent, kinds: ["f1": .municipalityLocalityStreet, "f2": .building, "f3": .municipalityLocalityStreet, "f4": .building]).isEmpty)
 let defaults = FillPlanner.numberedAddressDefaults(fields: numbered, kinds: [:])
 assert(defaults == ["f1": .prefectureMunicipality, "f2": .localityStreet, "f3": .building])
-let defaultPlan = FillPlanner.plan(fields: numbered, kinds: defaults, sources: [:], modelFailed: false)
+let defaultPlan = FillPlanner.plan(fields: numbered, kinds: defaults, sources: [:], modelFailed: false, profile: DummyProfile())
 assert((defaultPlan["items"] as! [[String: Any]]).map { $0["value"] as! String } == ["東京都千代田区", "千代田1-1", "テストマンション101号室"])
 assert((defaultPlan["items"] as! [[String: Any]]).allSatisfy { $0["overwritesExisting"] as? Bool == true })
 assert(FillPlanner.numberedAddressDefaults(fields: Array(numbered.prefix(2)), kinds: [:]).isEmpty)
@@ -136,7 +136,7 @@ assert(checkoutKinds["f4"] == .localityStreet && checkoutKinds["f10"] == .locali
 assert(FillPlanner.classificationBatches(fields: checkout, kinds: [:]).map { $0.count } == [4, 2, 4, 2])
 assert(FillPlanner.classificationBatches(fields: checkout, kinds: checkoutRules).map { $0.map(\.id) } == [["f4"], ["f10"]])
 assert(FillPlanner.siblingContext(fields: checkout, requestedIDs: ["f10"]).allSatisfy { $0.groupID == "g1" })
-let checkoutPlan = FillPlanner.plan(fields: checkout, kinds: checkoutRules, sources: [:], modelFailed: false)
+let checkoutPlan = FillPlanner.plan(fields: checkout, kinds: checkoutRules, sources: [:], modelFailed: false, profile: DummyProfile())
 assert((checkoutPlan["items"] as! [[String: Any]]).count == 12)
 assert((checkoutPlan["skipped"] as! [[String: String]]).isEmpty)
 var broadKinds = checkoutRules; broadKinds["f4"] = .addressWithoutPrefecture; broadKinds["f10"] = .fullAddress
@@ -145,7 +145,7 @@ assert(FillPlanner.contextualAddressKinds(fields: checkout, kinds: broadKinds)["
 let singleAddress = [field("住所全体", id: "f0", groupID: "g0"), field("建物名", id: "f1", groupID: "g0")]
 let singleKinds: [String: FieldKind] = ["f0": .fullAddress, "f1": .building]
 assert(FillPlanner.contextualAddressKinds(fields: singleAddress, kinds: singleKinds)["f0"] == .prefectureMunicipalityLocalityStreet)
-let singlePlan = FillPlanner.plan(fields: singleAddress, kinds: singleKinds, sources: [:], modelFailed: false)
+let singlePlan = FillPlanner.plan(fields: singleAddress, kinds: singleKinds, sources: [:], modelFailed: false, profile: DummyProfile())
 assert((singlePlan["items"] as! [[String: Any]]).map { $0["value"] as! String } == ["東京都千代田区千代田1-1", "テストマンション101号室"])
 assert(FillPlanner.rule(for: field("", autocomplete: "billing country-name")) == .unknown)
 assert(FillPlanner.rule(for: field("", autocomplete: "shipping tel-national")) == .unknown)
@@ -156,7 +156,7 @@ assert(FillPlanner.contextualAddressKinds(fields: isolated, kinds: ["f1": .build
 let collision = [field("町名・番地", id: "f0", groupID: "g0"), field("番地", id: "f1", groupID: "g0")]
 assert(FillPlanner.overlappingAddressGroups(fields: collision, kinds: ["f0": .localityStreet, "f1": .street]).count == 1)
 let partialConflict = FillPlanner.plan(fields: [field("姓", id: "f2", groupID: "g0")] + collision,
-    kinds: ["f2": .family, "f0": .localityStreet, "f1": .street], sources: [:], modelFailed: false)
+    kinds: ["f2": .family, "f0": .localityStreet, "f1": .street], sources: [:], modelFailed: false, profile: DummyProfile())
 assert((partialConflict["items"] as! [[String: Any]]).map { $0["id"] as! String } == ["f2"])
 let repeatedName = [field("姓", id: "f0", groupID: "g0"), field("姓", id: "f1", groupID: "g0")]
 assert(FillPlanner.overlappingIdentityIDs(fields: repeatedName, kinds: ["f0": .family, "f1": .family]) == ["f0", "f1"])

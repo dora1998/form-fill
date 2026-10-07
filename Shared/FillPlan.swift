@@ -48,7 +48,7 @@ enum FieldKind: String, Codable, CaseIterable {
 }
 
 // Synthetic data only. The classifier never receives this profile.
-struct DummyProfile {
+struct DummyProfile: ProfileValues {
     let id = "dummy-v1"
     let family = "山田"
     let given = "太郎"
@@ -60,7 +60,23 @@ struct DummyProfile {
     let locality = "千代田"
     let street = "1-1"
     let building = "テストマンション101号室"
+}
 
+protocol ProfileValues {
+    var id: String { get }
+    var family: String { get }
+    var given: String { get }
+    var familyKana: String { get }
+    var givenKana: String { get }
+    var postal: String { get }
+    var prefecture: String { get }
+    var municipality: String { get }
+    var locality: String { get }
+    var street: String { get }
+    var building: String { get }
+}
+
+extension ProfileValues {
     func value(for kind: FieldKind) -> String? {
         switch kind {
         case .family: return family
@@ -306,7 +322,7 @@ enum FillPlanner {
         for (id, kind) in numberedAddressDefaults(fields: fields, kinds: kinds) { kinds[id] = kind }
         kinds = contextualAddressKinds(fields: fields, kinds: kinds)
         var result = plan(fields: fields, kinds: kinds,
-                          sources: kinds.mapValues { _ in "rule" }, modelFailed: false)
+                          sources: kinds.mapValues { _ in "rule" }, modelFailed: false, profile: DummyProfile())
         result["requestID"] = requestID
         return result
     }
@@ -359,9 +375,8 @@ enum FillPlanner {
         return nil
     }
 
-    static func plan(fields: [FormField], kinds: [String: FieldKind], sources: [String: String], modelFailed: Bool) -> [String: Any] {
+    static func plan(fields: [FormField], kinds: [String: FieldKind], sources: [String: String], modelFailed: Bool, profile: any ProfileValues) -> [String: Any] {
         let kinds = contextualAddressKinds(fields: fields, kinds: kinds)
-        let profile = DummyProfile()
         var items = [[String: Any]]()
         var skipped = [[String: String]]()
         let overlappingIDs = Set(overlappingAddressGroups(fields: fields, kinds: kinds).flatMap { $0.map(\.id) })
@@ -370,6 +385,8 @@ enum FillPlanner {
             let kind = kinds[field.id] ?? .unknown
             var reason: String?
             var value = profile.value(for: kind)
+            if value?.isEmpty == true { reason = "登録情報が空です" }
+            if let value, value.utf16.count > 300 { reason = "入力値が長すぎます" }
             if value == nil { reason = "項目を判定できません" }
             if var composed = value {
                 if [FieldKind.familyKana, .givenKana, .fullKana].contains(kind), field.hint.contains("ひらがな") || field.hint.contains("ふりがな") || field.hint.contains("せい") || field.hint.contains("めい") {
