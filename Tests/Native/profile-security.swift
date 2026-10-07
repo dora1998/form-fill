@@ -4,12 +4,14 @@ import LocalAuthentication
 actor TestLoader {
     var profile: Profile?
     var requests = 0
+    var reasons = [String]()
     var fail = false
     var suspend = false
     var continuation: CheckedContinuation<Profile, Error>?
     init(_ profile: Profile) { self.profile = profile }
     func read(_ context: LAContext) async throws -> Profile {
         requests += 1
+        reasons.append(context.localizedReason)
         if suspend { return try await withCheckedThrowingContinuation { continuation = $0 } }
         if fail { throw ProfileError.authentication }
         guard let profile else { throw ProfileError.missing }
@@ -24,7 +26,7 @@ actor TestLoader {
 }
 final class TestClock { var value: TimeInterval = 0 }
 
-func check(_ condition: Bool) { precondition(condition) }
+func check(_ condition: Bool, line: UInt = #line) { precondition(condition, "check failed at line \(line)") }
 
 @main struct ProfileSecurityTests {
     static func main() async throws {
@@ -93,6 +95,29 @@ func check(_ condition: Bool) { precondition(condition) }
         await pendingLoader.resume()
         let cancelled = await task.value
         check(cancelled["error"] as? String == "stale_plan" && cancelled["items"] == nil)
+        let quickLoader = TestLoader(profile)
+        let quickClock = TestClock()
+        let quickService = ProfileFillService(load: { try await quickLoader.read($0) }, now: { quickClock.value })
+        let quickID = await session(quickService)
+        var quickWrong = request("quickFill", quickID); quickWrong["tabID"] = 6
+        check((await quickService.handle(quickWrong))["error"] as? String == "stale_plan")
+        let quickResult = await quickService.handle(request("quickFill", quickID))
+        check((quickResult["items"] as? [[String: Any]])?.first?["value"] as? String == profile.family)
+        check(await quickLoader.requests == 1)
+        check((await quickLoader.reasons).first?.contains("https://example.test") == true)
+        check((await quickService.handle(request("quickFill", quickID)))["error"] as? String == "stale_plan")
+        let quickExpired = await session(quickService); quickClock.value += 121
+        check((await quickService.handle(request("quickFill", quickExpired)))["error"] as? String == "stale_plan")
+        let quickDenied = await session(deniedService)
+        check((await deniedService.handle(request("quickFill", quickDenied)))["error"] as? String == "authentication_failed")
+        await pendingLoader.pause()
+        let quickPending = await session(pendingService)
+        let quickTask = Task { await pendingService.handle(request("quickFill", quickPending)) }
+        while !(await pendingLoader.waiting()) { await Task.yield() }
+        check((await pendingService.handle(request("quickFill", quickPending)))["error"] as? String == "stale_plan")
+        _ = await pendingService.handle(request("cancelFill", quickPending))
+        await pendingLoader.resume()
+        check((await quickTask.value)["error"] as? String == "stale_plan")
         print("Profile security: schema, explicit profile composition, auth failure, scope, replay, expiry, edit/delete, concurrent requests and cancellation passed")
     }
 }

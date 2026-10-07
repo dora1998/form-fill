@@ -73,7 +73,7 @@ export function installInline(): () => void {
         button = document.createElement('button');
         button.type = 'button';
         button.textContent = '自動入力';
-        button.title = 'Form Fillを開いて認証・入力内容を確認';
+        button.title = '認証して登録した姓名・住所を自動入力（既存値を上書き）';
         // Keep the field and software keyboard focused while tapping.
         button.addEventListener('pointerdown', event => event.preventDefault());
         button.addEventListener('mousedown', event => event.preventDefault());

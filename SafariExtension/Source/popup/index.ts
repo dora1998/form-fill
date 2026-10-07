@@ -6,6 +6,7 @@ const analyzeButton = document.querySelector<HTMLButtonElement>('#analyze')!;
 const unlockButton = document.querySelector<HTMLButtonElement>('#unlock')!;
 const fillButton = document.querySelector<HTMLButtonElement>('#fill')!;
 const fillStatus = document.querySelector<HTMLElement>('#fill-status')!;
+const cancelQuickButton = document.querySelector<HTMLButtonElement>('#cancel-quick');
 const preview = document.querySelector<HTMLElement>('#preview')!;
 type Session = { tabID: number; origin: string; requestID: string; sessionID: string };
 let session: Session | null = null;
@@ -55,6 +56,8 @@ const clear = () => {
     unlockButton.hidden = false;
     unlockButton.disabled = true;
     fillButton.disabled = true;
+    fillButton.hidden = false;
+    if (cancelQuickButton) cancelQuickButton.hidden = true;
     rows('#plan', [], () => '');
     rows('#skipped', [], () => '');
 };
@@ -63,7 +66,7 @@ const fail = (error: unknown) => {
     fillStatus.textContent = errorMessages[error instanceof Error ? error.message : '']
         ?? '処理できませんでした。Safariのサイトアクセス許可を確認して再試行してください。';
 };
-analyzeButton.addEventListener('click', async () => {
+const analyze = async (quickStart?: { tabID: number; url: string }) => {
     clear();
     const token = generation;
     const detailed = document.querySelector<HTMLInputElement>('#developer-record')?.checked === true;
@@ -82,8 +85,17 @@ analyzeButton.addEventListener('click', async () => {
     try {
         const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
         if (tab?.id == null || !tab.url) throw new Error('no_tab');
+        if (quickStart && (tab.id !== quickStart.tabID || tab.url !== quickStart.url)) throw new Error('stale_plan');
         const url = new URL(tab.url);
         if (url.protocol !== 'https:') throw new Error('https_required');
+        if (quickStart) {
+            document.querySelector<HTMLElement>('#site')!.textContent = `入力先: ${url.origin}`;
+            preview.hidden = false;
+            unlockButton.hidden = true;
+            fillButton.hidden = true;
+            if (cancelQuickButton) cancelQuickButton.hidden = false;
+            fillStatus.textContent = `${url.origin}の姓名・住所欄を解析し、認証後に入力します。既存値は上書きされます。`;
+        }
         developerTabID = tab.id;
         debugAnalysisURL = FormFillDebug.pageURL(tab.url).url;
         await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
@@ -115,6 +127,19 @@ analyzeButton.addEventListener('click', async () => {
         if (!result.ok || result.requestID !== extracted.requestID || !result.sessionID || !Array.isArray(result.classifications))
             throw new Error(result.error ?? 'analysis_failed');
         session = saved;
+        if (quickStart) {
+            rows('#plan', result.classifications, item => `${item.label}: ${item.kind === 'unknown' ? '保留' : '認証後に入力'}`);
+            fillStatus.textContent = `${url.origin}へ登録した姓名・住所を入力します。Face IDまたは端末パスコードで認証してください。既存値は上書きされます。`;
+            const committed = await withTimeout(browser.runtime.sendMessage({ type: 'quickFill', ...saved }));
+            await recordPhase(saved, 'commit', committed);
+            if (token !== generation) return;
+            if (!committed.ok || !Array.isArray(committed.results)) throw new Error(committed.error ?? 'stale_plan');
+            const filled = committed.results.filter(item => item.status === 'filled').length;
+            clear();
+            fillStatus.textContent = `${filled}欄に入力しました。${committed.results.length - filled}欄は保留しました。ページ上の値を確認してください。フォームは送信していません。`;
+            if (filled > 0) window.close();
+            return;
+        }
         document.querySelector<HTMLElement>('#site')!.textContent = `入力先: ${url.origin}`;
         rows('#plan', result.classifications, item => `${item.label}: ${item.kind === 'unknown' ? '判定できません' : '認証後に入力候補を確認'}`);
         preview.hidden = false;
@@ -124,8 +149,10 @@ analyzeButton.addEventListener('click', async () => {
     } catch (error) {
         await saveDeveloper({ status: 'failed', error: String(error) });
         if (token === generation) { lastAnalysis = FormFillDebug.analysis('failed'); fail(error); }
-    } finally { if (token === generation || !session) analyzeButton.disabled = false; }
-});
+    } finally { if (token === generation || !session) analyzeButton.disabled = false; if (cancelQuickButton) cancelQuickButton.hidden = true; }
+};
+analyzeButton.addEventListener('click', () => analyze());
+cancelQuickButton?.addEventListener('click', () => { clear(); fillStatus.textContent = 'キャンセルしました。'; });
 unlockButton.addEventListener('click', async () => {
     const saved = session;
     if (!saved) return;
@@ -175,3 +202,9 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') clear();
 });
 installDebug(() => ({ analysis: lastAnalysis, requestID: debugRequestID, fields: debugFields, analysisURL: debugAnalysisURL }));
+
+// Consume a short-lived, tab/document-bound start only from the trusted popup.
+// Opening the popup from Safari's menu keeps the ordinary preview flow.
+void browser.runtime.sendMessage({ type: 'consumeInlineStart' }).then(start => {
+    if (start?.ok && start.tabID != null && start.url) return analyze({ tabID: start.tabID, url: start.url });
+}).catch(() => {});

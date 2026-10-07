@@ -3,6 +3,7 @@ const failure = (error: string) => ({ version: 1, ok: false, error });
 const fieldKeys = ['id', 'groupID', 'tag', 'type', 'label', 'ariaLabel', 'name', 'htmlID', 'placeholder', 'autocomplete', 'context', 'maxLength', 'pattern', 'occupied', 'options'] as const;
 const native = (message: unknown) => browser.runtime.sendNativeMessage('dev.formfill.app.extension', message) as Promise<AnalysisResult>;
 
+let inlineStart: { tabID: number; url: string; expires: number; ready: Promise<void> } | undefined;
 // Only our packaged popup may request registered data. Page/content messages,
 // including the former one-step inline path, are rejected.
 browser.runtime.onMessage.addListener(async (payload: unknown, sender: Sender) => {
@@ -11,21 +12,34 @@ browser.runtime.onMessage.addListener(async (payload: unknown, sender: Sender) =
         if (sender.id !== browser.runtime.id || sender.tab?.id == null || sender.frameId !== 0
             || !sender.url || !/^https:\/\//.test(sender.url)) return failure('unsupported_request');
         try {
-            await browser.action.openPopup();
+            const ready = browser.action.openPopup();
+            inlineStart = { tabID: sender.tab.id, url: sender.url, expires: Date.now() + 10000, ready };
+            await ready;
             return { version: 1, ok: true };
-        } catch { return failure('popup_unavailable'); }
+        } catch { inlineStart = undefined; return failure('popup_unavailable'); }
     }
     if (sender.id !== browser.runtime.id || sender.tab || sender.url !== browser.runtime.getURL('popup.html')
         || !payload || typeof payload !== 'object') return failure('unsupported_request');
     const message = payload as Record<string, unknown>;
     const type = String(message.type);
+    if (type === 'consumeInlineStart') {
+        const start = inlineStart;
+        inlineStart = undefined;
+        if (!start || start.expires <= Date.now()) return { version: 1, ok: true };
+        // Do not present OS authentication during Safari's popup transition.
+        try { await start.ready; } catch { return failure('popup_unavailable'); }
+        if (start.expires <= Date.now()) return failure('stale_plan');
+        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id !== start.tabID || tab.url !== start.url) return failure('stale_plan');
+        return { version: 1, ok: true, tabID: start.tabID, url: start.url };
+    }
     if (type === 'saveDeveloperReport') {
         if (typeof message.report !== 'string' || new TextEncoder().encode(message.report).length > 20 * 1024 * 1024)
             return failure('report_too_large');
         return native({ version: 1, type, report: message.report });
     }
     if (['health', 'modelProbe'].includes(type)) return native({ version: 1, type });
-    if (!['analyzeForm', 'prepareFill', 'commitFill', 'cancelFill'].includes(type)) return failure('unsupported_request');
+    if (!['analyzeForm', 'prepareFill', 'commitFill', 'quickFill', 'cancelFill'].includes(type)) return failure('unsupported_request');
     if (typeof message.requestID !== 'string' || message.requestID.length > 80
         || !Number.isInteger(message.tabID)) return failure('invalid_request');
     if (type !== 'analyzeForm' && (typeof message.sessionID !== 'string' || message.sessionID.length > 80)) return failure('invalid_request');
@@ -56,7 +70,7 @@ browser.runtime.onMessage.addListener(async (payload: unknown, sender: Sender) =
             if (result.sessionID) await native({ ...request, type: 'cancelFill', sessionID: result.sessionID });
             return failure('stale_plan');
         }
-        if (type === 'commitFill') {
+        if (type === 'commitFill' || type === 'quickFill') {
             if (result.requestID !== message.requestID || !Array.isArray(result.items)) return failure('invalid_response');
             // Values come from the authenticated native result, never from popup input.
             const response: FillResponse = await browser.tabs.sendMessage(tab.id!, {

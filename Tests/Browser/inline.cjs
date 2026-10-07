@@ -57,6 +57,57 @@ const fs = require('node:fs');
       return listener({ type: 'applyFill', requestID: extracted.requestID, items: [{ id: 'f0', value: '合成試験' }] }, { id: 'test' });
     });
     assert.equal(result.error, 'stale_plan');
+    const popup = await browser.newPage();
+    const popupHTML = fs.readFileSync(`${__dirname}/../../SafariExtension/Resources/popup.html`, 'utf8').replace(/<script[^>]*>.*?<\/script>/gs, '');
+    await popup.route('https://popup.example/**', route => route.fulfill({ contentType: 'text/html', body: popupHTML }));
+    async function loadPopup(mode = 'quick') {
+      await popup.goto('https://popup.example/');
+      await popup.evaluate(mode => {
+        window.requests = [];
+        window.close = () => window.closedByFill = true;
+        window.browser = {
+          runtime: { getManifest: () => ({ version: 'test' }), sendMessage: async message => {
+            requests.push(message);
+            if (message.type === 'consumeInlineStart') return { ok: true, ...(mode === 'manual' ? {} : { tabID: 5, url: mode === 'stale' ? 'https://fixture.example/other' : 'https://fixture.example/form' }) };
+            if (message.type === 'analyzeForm') {
+              if (mode === 'cancel') await new Promise(resolve => window.finishAnalysis = resolve);
+              return { ok: true, requestID: message.requestID, sessionID: 'session', classifications: [{ id: 'f0', kind: 'family', label: '姓' }] };
+            }
+            if (message.type === 'quickFill') return mode === 'denied' ? { ok: false, error: 'authentication_failed' } : { ok: true, results: [{ id: 'f0', status: 'filled' }] };
+            return { ok: true };
+          } },
+          tabs: { query: async () => [{ id: 5, url: 'https://fixture.example/form' }], sendMessage: async (_, message) => {
+            if (message.type === 'extract') return { requestID: 'request', fields: [{ id: 'f0' }] };
+            return { ok: true };
+          } },
+          scripting: { executeScript: async () => [] }
+        };
+      }, mode);
+      await popup.addScriptTag({ content: fs.readFileSync(`${__dirname}/../../SafariExtension/Resources/debug-info.js`, 'utf8') });
+      await popup.addScriptTag({ content: fs.readFileSync(`${__dirname}/../../SafariExtension/Resources/popup.js`, 'utf8') });
+    }
+    await loadPopup();
+    await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('1欄に入力しました'));
+    assert.deepEqual(await popup.evaluate(() => requests.map(item => item.type).filter(type => type !== 'cancelFill')), ['consumeInlineStart', 'analyzeForm', 'quickFill']);
+    assert.equal(await popup.evaluate(() => window.closedByFill), true);
+    await loadPopup('manual');
+    assert.deepEqual(await popup.evaluate(() => requests.map(item => item.type)), ['consumeInlineStart']);
+    assert.equal(await popup.locator('#cancel-quick').isVisible(), false);
+    await loadPopup('stale');
+    await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('ページが変わった'));
+    assert.deepEqual(await popup.evaluate(() => requests.map(item => item.type)), ['consumeInlineStart']);
+    await loadPopup('denied');
+    await popup.waitForFunction(() => document.querySelector('#fill-status').textContent.includes('認証できませんでした'));
+    assert.equal(await popup.locator('#cancel-quick').isVisible(), false);
+    assert.equal(await popup.evaluate(() => Boolean(window.closedByFill)), false);
+    await loadPopup('cancel');
+    await popup.waitForFunction(() => Boolean(window.finishAnalysis));
+    await popup.locator('#cancel-quick').click();
+    await popup.evaluate(() => finishAnalysis());
+    await popup.waitForFunction(() => requests.some(item => item.type === 'cancelFill'));
+    assert.equal(await popup.evaluate(() => requests.some(item => item.type === 'quickFill')), false);
+    assert.match(await popup.locator('#fill-status').textContent(), /キャンセル/);
+    await popup.close();
     console.log('Inline popup entry, focus, layout, reinjection, HTTPS and sender boundaries passed');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

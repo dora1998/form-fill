@@ -27,7 +27,7 @@ struct ProfileRepository {
     private static func authenticate(_ context: LAContext) async throws {
         do {
             guard try await context.evaluatePolicy(.deviceOwnerAuthentication,
-                localizedReason: "保存した姓名・住所を表示・変更します") else { throw ProfileError.authentication }
+                localizedReason: context.localizedReason) else { throw ProfileError.authentication }
         } catch { throw ProfileError.authentication }
     }
 

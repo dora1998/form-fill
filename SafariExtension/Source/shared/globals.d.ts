@@ -9,8 +9,9 @@ declare global {
                 addListener<T>(listener: (message: T, sender: Sender) => unknown): void;
                 removeListener<T>(listener: (message: T, sender: Sender) => unknown): void;
             };
+            sendMessage(message: { type: 'consumeInlineStart' }): Promise<{ version: number; ok: boolean; error?: string; tabID?: number; url?: string }>;
             sendMessage(message: { type: 'openFillPopup' }): Promise<{ version: number; ok: boolean; error?: string }>;
-            sendMessage(message: { type: 'prepareFill' | 'commitFill' | 'cancelFill'; requestID: string; sessionID: string; tabID: number; origin: string }): Promise<AnalysisResult & FillResponse>;
+            sendMessage(message: { type: 'prepareFill' | 'commitFill' | 'quickFill' | 'cancelFill'; requestID: string; sessionID: string; tabID: number; origin: string }): Promise<AnalysisResult & FillResponse>;
             sendMessage(message: {
                 type: 'analyzeForm';
                 tabID?: number;
