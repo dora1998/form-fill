@@ -52,7 +52,9 @@ export const debugUtilities = (() => {
             return { url: null, pathRedacted: false };
         }
     };
-    const kinds = ['family', 'given', 'fullName', 'familyKana', 'givenKana', 'fullKana', 'postal', 'postalFirst3', 'postalLast4', 'prefecture', 'prefectureMunicipality', 'municipality', 'locality', 'street', 'building', 'localityStreet', 'municipalityLocality', 'municipalityLocalityStreet', 'addressWithoutPrefecture', 'fullAddress', 'prefectureMunicipalityLocalityStreet', 'unknown'];
+    const kinds = ['family', 'given', 'fullName', 'familyKana', 'givenKana', 'fullKana', 'postal', 'postalFirst3', 'postalLast4', 'address', 'unknown'];
+    const addressComponents = ['prefecture', 'municipality', 'locality', 'street', 'building'];
+    const safeComponents = (value: unknown) => addressComponents.filter(part => Array.isArray(value) && value.includes(part));
     const hintRules: Record<string, RegExp> = {
         family: /姓|family|surname/i, given: /(?:^|[（(\s])名(?:$|[）)\s])|given|first.?name/i,
         full_name: /氏名|お名前|姓名|full.?name/i, kana: /カナ|かな|フリガナ|ふりがな|kana/i,
@@ -112,7 +114,7 @@ export const debugUtilities = (() => {
     };
     const modelDiagnostics = (value: DiagnosticRecord | undefined) => ({
         available: value?.available === true,
-        requestedFields: count(value?.requestedFields), attemptedBatches: count(value?.attemptedBatches),
+        requestedFields: count(value?.requestedFields), attemptedBatches: count(value?.attemptedBatches), reviewedBatches: count(value?.reviewedBatches),
         failures: (Array.isArray(value?.failures) ? value.failures : []).slice(0, 11).map((failure: DiagnosticRecord) => ({
             fieldIDs: (Array.isArray(failure?.fieldIDs) ? failure.fieldIDs : []).slice(0, 40).map(fieldID).filter(Boolean),
             reason: code(failure?.reason, Object.keys(modelFailureDescriptions)),
@@ -127,11 +129,11 @@ export const debugUtilities = (() => {
         classifierVersion: count(result.classifierVersion),
         modelDiagnostics: modelDiagnostics(result.modelDiagnostics),
         items: (Array.isArray(result.items) ? result.items : []).slice(0, 40).map((item: DiagnosticRecord) => ({
-            id: fieldID(item?.id), kind: code(item?.kind, kinds), source: code(item?.source, ['rule', 'model']),
+            id: fieldID(item?.id), kind: code(item?.kind, kinds), components: safeComponents(item?.components), source: code(item?.source, ['rule', 'model']),
             overwritesExisting: item?.overwritesExisting === true
         })),
         skipped: (Array.isArray(result.skipped) ? result.skipped : []).slice(0, 40).map((item: DiagnosticRecord) => ({
-            id: fieldID(item?.id), kind: code(item?.kind, kinds),
+            id: fieldID(item?.id), kind: code(item?.kind, kinds), components: safeComponents(item?.components),
             source: code(item?.source, ['rule', 'model', 'not_classified_existing_input', 'unclassified']),
             reason: Object.hasOwn(reasons, item?.reason) ? reasons[item.reason] : 'unknown'
         }))
@@ -150,9 +152,7 @@ export const debugUtilities = (() => {
     const kindDescriptions = {
         family: '姓', given: '名', fullName: '姓名全体', familyKana: '姓のカナ', givenKana: '名のカナ', fullKana: '姓名全体のカナ',
         postal: '郵便番号全体', postalFirst3: '郵便番号の先頭3桁', postalLast4: '郵便番号の末尾4桁',
-        prefecture: '都道府県', prefectureMunicipality: '都道府県＋市区町村', municipality: '市区町村', locality: '町名・町域', street: '番地', building: '建物名・部屋番号',
-        localityStreet: '町名＋番地', municipalityLocality: '市区町村＋町名', municipalityLocalityStreet: '市区町村＋町名＋番地',
-        addressWithoutPrefecture: '都道府県以降の住所全体', fullAddress: '都道府県からの住所全体', prefectureMunicipalityLocalityStreet: '都道府県・市区町村・町名・番地', unknown: '不明'
+        address: '住所（成分配列）', unknown: '不明'
     };
     const hintDescriptions = {
         family: '姓の手がかり', given: '名の手がかり', full_name: '姓名全体の手がかり', kana: 'カナの手がかり',
@@ -168,12 +168,13 @@ export const debugUtilities = (() => {
         const usedKinds = new Set([...result.items, ...result.skipped].map((item: DiagnosticRecord) => item.kind));
         return {
             kinds: Object.fromEntries(Object.entries(kindDescriptions).filter(([key]) => usedKinds.has(key))),
+            components: Object.fromEntries(Object.entries({ prefecture: '都道府県', municipality: '市区町村', locality: '町名・地域', street: '丁目・番地・号', building: '建物名・部屋番号' }).filter(([key]) => [...result.items, ...result.skipped].some(item => item.components.includes(key)))),
             hints: Object.fromEntries(Object.entries(hintDescriptions).filter(([key]) => usedHints.has(key))),
             modelFailures: Object.fromEntries(Object.entries(modelFailureDescriptions).filter(([key]) => result.modelDiagnostics.failures.some(failure => failure.reason === key)))
         };
     };
     const report = (page: DiagnosticRecord | undefined, lastAnalysis: DiagnosticRecord | undefined, extensionVersion: unknown, extractedFields: unknown[] = [], captureStatus = 'unknown', urls: DiagnosticRecord = {}, captureDiagnostics: DiagnosticRecord = {}) => ({
-        schemaVersion: 3,
+        schemaVersion: 4,
         product: 'Form Fill',
         extensionVersion: typeof extensionVersion === 'string' && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(extensionVersion) ? extensionVersion : 'unknown',
         analysisURL: pageURL(urls.analysis),

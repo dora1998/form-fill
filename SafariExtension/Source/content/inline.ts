@@ -16,7 +16,7 @@ export function isRuleTarget(element: Control): boolean {
         || /^(お名前|氏名|フリガナ|ふりがな)[（(](姓|名)[）)]$/.test(label)
         || /(市区町村郡|市区町村|市町村)以降|(市区町村|市町村|町名|町域).*番地|都道府県/.test(label)
         || /建物名|マンション名|アパート名|方書/.test(label) && !label.includes('番地')) return true;
-    if (label === '市区町村' && (!field.placeholder || /市.+区.+(町|丁目)/.test(field.placeholder))) return true;
+    if (label === '市区町村' && !field.placeholder) return true;
     return ['family-name', 'given-name', 'name', 'address-level1', 'address-level2', 'street-address', 'postal-code'].includes(token)
         || label === '郵便番号' || /zip|postal|postcode|郵便番号/i.test(`${field.name} ${field.htmlID}`)
         || /郵便番号/.test(label);

@@ -35,7 +35,11 @@ const headings = (element: Control) => [
 const isExample = (value: string) => /^(?:例\s*[)）:：]|e\.?g\.?\s*[:：]?)/i.test(value.trim());
 const nearbyLabel = (element: Control) => {
     let node: Element | null = element;
-    for (let depth = 0; depth < 3 && node?.parentElement && !node.parentElement.matches('form, body'); depth++, node = node.parentElement) {
+    // Walk through layout wrappers, but stop before a container owns other
+    // controls: its preceding sibling may be an unrelated field's heading.
+    for (let depth = 0; depth < 8 && node?.parentElement && !node.parentElement.matches('form, body'); depth++, node = node.parentElement) {
+        if (node !== element && (node.matches('form, fieldset') || [...node.querySelectorAll('input, select, textarea')].some(control => control !== element)))
+            break;
         let sibling = node.previousSibling;
         for (let count = 0; sibling && count < 6; count++, sibling = sibling.previousSibling) {
             if (sibling instanceof Element && (sibling.matches('input, select, textarea') || sibling.querySelector('input, select, textarea')))

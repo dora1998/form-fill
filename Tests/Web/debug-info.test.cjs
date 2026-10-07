@@ -66,8 +66,8 @@ test('clipboard boundary discards arbitrary page, model, URL, label and exceptio
   const analysis = debug.analysis('success', { modelFailed: true, items: [{ id: 'f0', kind: 'family', source: 'rule', value: secret }],
     skipped: [{ id: 'f1', reason: '既存の入力を保持', label: secret }, { id: 'f2', reason: '__proto__' }] });
   const safe = plain(debug.report({ version: 1, fields: [] }, analysis, '0.1.0'));
-  assert.deepEqual(safe.lastAnalysis.items, [{ id: 'f0', kind: 'family', source: 'rule', overwritesExisting: false }]);
-  assert.deepEqual(safe.lastAnalysis.skipped, [{ id: 'f1', kind: 'unknown', source: 'unknown', reason: 'existing_input' }, { id: 'f2', kind: 'unknown', source: 'unknown', reason: 'unknown' }]);
+  assert.deepEqual(safe.lastAnalysis.items, [{ id: 'f0', kind: 'family', components: [], source: 'rule', overwritesExisting: false }]);
+  assert.deepEqual(safe.lastAnalysis.skipped, [{ id: 'f1', kind: 'unknown', components: [], source: 'unknown', reason: 'existing_input' }, { id: 'f2', kind: 'unknown', components: [], source: 'unknown', reason: 'unknown' }]);
   assert.equal(safe.lastAnalysis.modelFailed, true);
   assert.equal(JSON.stringify(safe).includes(secret), false);
 });
@@ -95,7 +95,7 @@ function popup({ denyAccess = false, denyClipboard = false, noFields = false, un
       } },
       runtime: { getManifest: () => ({ version: '0.1.0' }), sendMessage: async message => unavailable
         ? { version: 1, error: 'model_unavailable', reason: 'model_not_ready' }
-        : { version: 1, ok: true, sessionID: 'session', classifications: [{ id: 'f0', label: '住所', kind: 'fullAddress' }], requestID: message.requestID, items: [{ id: 'f0', kind: 'family', source: 'rule', label: secret, value: secret, displayValue: secret }], skipped: [] } }
+        : { version: 1, ok: true, sessionID: 'session', classifications: [{ id: 'f0', label: '住所', kind: 'address', components: ['prefecture', 'municipality', 'locality', 'street', 'building'] }], requestID: message.requestID, items: [{ id: 'f0', kind: 'family', source: 'rule', label: secret, value: secret, displayValue: secret }], skipped: [] } }
     } };
   vm.createContext(context);
   vm.runInContext(resource('debug-info.js'), context);
@@ -142,18 +142,20 @@ test('placeholder and sibling hints remain useful without copying personal data 
     label: '住所1（市区町村・町名・番地）', placeholder: `例：東京都千代田区千代田1-1 ${secret}`,
     autocomplete: `section-${secret} address-line1`, options: [], pattern: secret,
     get value() { throw Error('must not read values'); } }]);
-  const report = plain(context.FormFillDebug.report(undefined, { status: 'success', skipped: [{ id: 'f0', kind: 'municipalityLocalityStreet', source: 'rule', reason: 'existing_input' }] }, '0.1.0', fields, 'message_failed'));
+  const report = plain(context.FormFillDebug.report(undefined, { status: 'success', skipped: [{ id: 'f0', kind: 'address', components: ['municipality', 'locality', 'street', secret], source: 'rule', reason: 'existing_input' }] }, '0.1.0', fields, 'message_failed'));
   const serialized = JSON.stringify(report);
   for (const sensitive of [secret, '東京都', '千代田区', '千代田1-1', '住所1（市区町村・町名・番地）']) assert.equal(serialized.includes(sensitive), false);
-  assert.equal(report.schemaVersion, 3);
+  assert.equal(report.schemaVersion, 4);
   assert.equal(report.analysisFields[0].autocomplete, 'address-line1');
   assert.ok(report.analysisFields[0].placeholder.hints.includes('example_prefecture'));
   assert.ok(report.analysisFields[0].placeholder.hints.includes('example_city_ward'));
   assert.ok(report.analysisFields[0].placeholder.hints.includes('example_number'));
   assert.ok(report.analysisFields[0].label.hints.includes('municipality'));
-  assert.equal(report.lastAnalysis.skipped[0].kind, 'municipalityLocalityStreet');
+  assert.equal(report.lastAnalysis.skipped[0].kind, 'address');
   assert.equal(report.lastAnalysis.skipped[0].source, 'rule');
-  assert.equal(report.legend.kinds.municipalityLocalityStreet, '市区町村＋町名＋番地');
+  assert.equal(report.legend.kinds.address, '住所（成分配列）');
+  assert.deepEqual(report.lastAnalysis.skipped[0].components, ['municipality', 'locality', 'street']);
+  assert.equal(report.legend.components.locality, '町名・地域');
   assert.equal(report.legend.hints.example_prefecture, '都道府県を含む例');
   fields[0].placeholder.hints.push(secret);
   fields[0].placeholder.raw = secret;

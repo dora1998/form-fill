@@ -21,9 +21,11 @@ export interface FormField {
         disabled: boolean;
     }[];
 }
+export type AddressComponent = 'prefecture' | 'municipality' | 'locality' | 'street' | 'building';
 export interface FillItem {
     id: string;
     kind?: string;
+    components?: AddressComponent[];
     value: string;
     label: string;
     displayValue: string;
@@ -37,7 +39,7 @@ export interface AnalysisResult {
     items: FillItem[];
     sessionID?: string;
     expiresInSeconds?: number;
-    classifications?: { id: string; kind: string; source: string; label: string }[];
+    classifications?: { id: string; kind: string; components: AddressComponent[]; source: string; label: string }[];
     skipped: {
         id: string;
         label: string;

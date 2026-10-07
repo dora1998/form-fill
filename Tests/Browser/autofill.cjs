@@ -45,7 +45,7 @@ const path = require('node:path');
     assert.equal(await page.locator('input').first().inputValue(), '山田');
     await load('<label>住所<textarea>元の住所</textarea></label>');
     extracted = await send({ type: 'extract' });
-    assert.equal((await send({ type: 'applyFill', requestID: extracted.requestID, items: [{ id: 'f0', kind: 'fullAddress', value: '東京都千代田区千代田1-1' }] })).results[0].status, 'filled');
+    assert.equal((await send({ type: 'applyFill', requestID: extracted.requestID, items: [{ id: 'f0', kind: 'address', components: ['prefecture', 'municipality', 'locality', 'street'], value: '東京都千代田区千代田1-1' }] })).results[0].status, 'filled');
     assert.equal(await page.locator('textarea').inputValue(), '東京都千代田区千代田1-1');
 
     // Sanitized reproduction of stacked rows and watermark labels. Opaque IDs
@@ -67,6 +67,22 @@ const path = require('node:path');
     assert.equal(await page.evaluate(() => window.submissions || 0), 0);
     await load('<p>番地</p><label for="explicit">建物名</label><input id="explicit">');
     assert.equal((await send({ type: 'extract' })).fields[0].label, '建物名');
+
+    // Nested wrappers must expose their own heading without borrowing another field's.
+    await load(fs.readFileSync(path.join(__dirname, '../../Fixtures/nested-address-examples.html'), 'utf8'));
+    extracted = await send({ type: 'extract' });
+    assert.deepEqual(extracted.fields.map(field => field.label.replaceAll('必須', '').replaceAll('任意', '').trim()),
+      ['市区町村名', '丁目番地', '建物名', '備考']);
+    assert.equal(extracted.fields[0].placeholder, '例）架空区青空');
+    const nestedFill = await send({ type: 'applyFill', requestID: extracted.requestID, items: [
+      { id: 'f0', value: '架空区青空' }, { id: 'f1', value: '2-3-4' }, { id: 'f2', value: 'サンプルハイツ202号室' }
+    ] });
+    assert.deepEqual(nestedFill.results.map(item => item.status), ['filled', 'filled', 'filled']);
+    assert.deepEqual(await page.locator('input').evaluateAll(nodes => nodes.map(node => node.value)),
+      ['架空区青空', '2-3-4', 'サンプルハイツ202号室', '']);
+    assert.equal(await page.evaluate(() => window.submissions || 0), 0);
+    await load('<div><span>建物名</span><div><div><div><input></div></div></div></div><div><div><div><div><input></div></div></div></div>');
+    assert.deepEqual((await send({ type: 'extract' })).fields.map(field => field.label), ['建物名', '']);
 
     const defaultPrefecture = '<label>都道府県<select><option value="13">東京都</option><option selected value="14">神奈川県</option></select></label>';
     await load(defaultPrefecture);
