@@ -33,7 +33,7 @@ open FormFill.xcodeproj
 
 `project.yml` が構成の正本です。生成した `.xcodeproj` はコミットせず、構成変更は `project.yml` に反映します。Info.plistは生成結果も追跡し、再生成で差分が出ないよう、設定と生成結果を一緒に更新します。
 
-`FormFill` schemeを選び、両ターゲットのSigning & Capabilitiesで自分のTeamを指定してください。実機用Bundle IDは `project.yml` のアプリ・拡張を同じ接頭辞で固有のものへ変更します。拡張のIDを変更した場合は `SafariExtension/Source/background.ts` のnative message送信先と関連テストも合わせて変更します。
+`FormFill` schemeを選び、両ターゲットのSigning & Capabilitiesで自分のTeamを指定してください。実機用Bundle IDは `project.yml` のアプリ・拡張を同じ接頭辞で固有のものへ変更します。拡張のIDを変更した場合は `SafariExtension/Source/background-handler.ts` のnative message送信先と関連テストも合わせて変更します。
 
 ```sh
 xcodebuild -project FormFill.xcodeproj -scheme FormFill \
@@ -66,9 +66,11 @@ Node.js 24以降、pnpm 11.19.0、Python 3を使用します。依存関係は `
 ```sh
 pnpm test
 pnpm check
+pnpm test:browser
+pnpm test:native
 ```
 
-JavaScriptテストはブラウザーAPIとDOMのモックを使って、native message、安全な入力欄カウント、ポップアップの成功・失敗を検証します。Swiftの値合成テストと実DOMのWebKitテストは[開発手順](docs/development.md)を参照してください。静的チェックはplistとmanifestの整合性、権限、リソース参照を検証します。これらはiOSビルド・Safari実機動作・LLM精度の検証を代替しません。
+JavaScriptテストは通信decoder、差し替え可能なworkflow、ブラウザーAPIとDOMのモックを使って、native message、安全な入力欄カウント、ポップアップの成功・失敗を検証します。SwiftテストはローカルPackageのターゲットを使い、モデル・認証・時計を差し替えて状態遷移と異常系を検証します。Swiftの値合成テストと実DOMのWebKitテストは[開発手順](docs/development.md)を参照してください。静的チェックはplistとmanifestの整合性、権限、リソース参照を検証します。これらはiOSビルド・Safari実機動作・LLM精度の検証を代替しません。
 
 `.github/workflows/validate.yml` にmacOSでのプロジェクト生成・署名なしビルドとローカル検証を定義しています。PRのmacOS CIに加え、iPhone 17でSafari拡張のネイティブ連携とFoundation Modelsの固定文生成も確認済みです。詳しい条件は[開発と検証の手順](docs/development.md)を参照してください。
 
@@ -77,10 +79,12 @@ JavaScriptテストはブラウザーAPIとDOMのモックを使って、native 
 ```text
 App/                        SwiftUIアプリ
 SafariExtension/            ネイティブハンドラーと拡張リソース
-Shared/                     メッセージ検証・プロフィール・Keychain保存・値合成
+Packages/FormFillKit/        Core・Application・Apple・BridgeのSwift Package
 Fixtures/                   実機確認用の合成フォーム
 SafariExtension/Source/     拡張のTypeScriptソース（責務別モジュール）
-Tests/Web/                  拡張のTypeScript成果物テスト
+Tests/Web/                  通信・workflow・拡張成果物のテスト
+Tests/Contracts/            Swift/TypeScript共通の通信fixture
+Packages/FormFillKit/Tests/  Swiftの単体・回帰テスト
 docs/                       仕様、設計、開発手順
 project.yml                 XcodeGenプロジェクト定義
 ```

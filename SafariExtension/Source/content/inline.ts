@@ -1,5 +1,6 @@
+import type { Control } from './types';
 import { eligible, metadata } from './fields';
-import type { Control } from '../shared/contracts';
+
 
 // Conservative subset of FillPlanner.rule. No page scan or native call on focus.
 export function isRuleTarget(element: Control): boolean {

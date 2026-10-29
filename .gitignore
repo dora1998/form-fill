@@ -11,3 +11,7 @@ test-results/
 
 # TypeScript build outputs
 SafariExtension/Resources/*.js
+
+# Local Swift package builds
+.build/
+.swiftpm/

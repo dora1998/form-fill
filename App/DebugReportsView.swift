@@ -1,3 +1,5 @@
+import FormFillCore
+import FormFillApplication
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -15,11 +17,14 @@ private struct DebugReportDocument: FileDocument {
 
 struct DebugReportsView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var reports: [URL] = []
-    @State private var message: String?
+    @State private var model: DebugReportsModel
     @State private var document: DebugReportDocument?
     @State private var filename = "form-fill-developer"
     @State private var exporting = false
+
+    init(repository: ReportRepository) {
+        _model = State(initialValue: DebugReportsModel(repository: repository))
+    }
 
     var body: some View {
         List {
@@ -27,49 +32,43 @@ struct DebugReportsView: View {
                 Text("詳細ログにはDOM・解析過程・入力前後の値が含まれます。新規保存時は登録プロフィールをマスキングします。他の個人情報や過去のログは共有前に確認してください。左にスワイプして削除できます。")
                 Text("個人情報や認証トークンが含まれ得ます。共有前に内容を確認してください。保存した記録は削除するまで端末内に残ります。")
             }
-            if let message { Text(message) }
-            if reports.isEmpty {
+            if let message = model.message { Text(message) }
+            if model.reports.isEmpty {
                 Text("保存したデバッグログはありません。")
             }
-            ForEach(reports, id: \.self) { url in
+            ForEach(model.reports, id: \.self) { url in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(url.lastPathComponent).font(.caption).textSelection(.enabled)
                     HStack {
-                        Button("ファイルに保存") { export(url) }
+                        Button("ファイルに保存") { Task { await export(url) } }
                             .buttonStyle(.bordered)
+                            .disabled(model.busy)
                         ShareLink(item: url) { Label("共有", systemImage: "square.and.arrow.up") }
                             .buttonStyle(.bordered)
                     }
                 }
             }
             .onDelete(perform: delete)
+            .deleteDisabled(model.busy)
         }
         .navigationTitle("デバッグログ")
-        .toolbar { Button("更新", systemImage: "arrow.clockwise") { refresh() } }
-        .onAppear(perform: refresh)
-        .onChange(of: scenePhase) { _, phase in if phase == .active { refresh() } }
+        .toolbar { Button("更新", systemImage: "arrow.clockwise") { Task { await model.refresh() } } }
+        .task { await model.refresh() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await model.refresh() } } }
         .fileExporter(isPresented: $exporting, document: document, contentType: .json, defaultFilename: filename) { result in
-            if case .failure = result { message = "ファイルを保存できませんでした。再試行してください。" }
+            if case .failure = result { model.message = "ファイルを保存できませんでした。再試行してください。" }
         }
     }
 
-    private func refresh() {
-        do { reports = try DebugReportStore.shared().reports(); message = nil }
-        catch { message = "ログを読み込めませんでした。アプリと拡張のApp Groups設定を確認してください。" }
-    }
-
-    private func export(_ url: URL) {
-        do {
-            document = DebugReportDocument(data: try Data(contentsOf: url))
-            filename = url.deletingPathExtension().lastPathComponent
-            exporting = true
-        } catch { message = "ログを読み込めませんでした。再試行してください。" }
+    private func export(_ url: URL) async {
+        guard let data = await model.export(url) else { return }
+        document = DebugReportDocument(data: data)
+        filename = url.deletingPathExtension().lastPathComponent
+        exporting = true
     }
 
     private func delete(_ offsets: IndexSet) {
-        do {
-            for index in offsets { try FileManager.default.removeItem(at: reports[index]) }
-            refresh()
-        } catch { message = "ログを削除できませんでした。「更新」して再試行してください。" }
+        let urls = offsets.compactMap { model.reports.indices.contains($0) ? model.reports[$0] : nil }
+        Task { await model.delete(urls) }
     }
 }

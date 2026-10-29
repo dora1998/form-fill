@@ -1,13 +1,14 @@
-import type { Control, FormField } from '../shared/contracts';
+import type { Control } from './types';
+import type { FormField } from '../shared/contracts';
 const postalControl = (element: Control) => (element.autocomplete || '').split(/\s+/).includes('postal-code')
     || /(?:zip|postal|postcode|郵便番号)/i.test(`${element.name} ${element.id}`)
     || /郵便番号/.test(`${fieldLabel(element)} ${element.getAttribute('aria-label') || ''}`);
+const visible = (element: Control) => !['hidden', 'collapse'].includes(getComputedStyle(element).visibility) && element.getClientRects().length > 0;
 const eligible = (element: Control) => {
-    const visibility = getComputedStyle(element).visibility;
     return !element.closest('[aria-hidden="true"], [inert]') && !element.matches(':disabled') && !('readOnly' in element && element.readOnly)
         && (['', 'text', 'number', 'search', 'select-one', 'textarea'].includes((element.type || '').toLowerCase())
             || element.type === 'tel' && postalControl(element))
-        && !['hidden', 'collapse'].includes(visibility) && element.getClientRects().length > 0;
+        && visible(element);
 };
 const candidates = () => [...document.querySelectorAll<Control>('input, select, textarea')].filter(eligible);
 const text = (value: unknown) => String(value || '').trim().slice(0, 120);
@@ -59,8 +60,7 @@ const fieldLabel = (element: Control) => {
 };
 // Opaque IDs encode structural ownership and standard autocomplete scope only.
 // Never export container IDs, headings or arbitrary section names.
-const groupIDs = () => {
-    const all = candidates();
+const groupIDs = (all = candidates()) => {
     const counts = new Map<Element, number>();
     for (const element of all) {
         for (let parent = element.parentElement; parent; parent = parent.parentElement) {
@@ -115,7 +115,7 @@ const groupIDs = () => {
     const ids = [...new Set(groups.values())];
     return new Map(all.map(element => [element, `g${ids.indexOf(groups.get(element)!)}`]));
 };
-const metadata = (element: Control, id: string, groups = groupIDs(), readOccupied = true): FormField => ({
+const metadata = (element: Control, id: string, groups: Map<Control, string>, readOccupied = true): FormField => ({
     id, groupID: groups.get(element)!, tag: element.tagName.toLowerCase(), type: element.type || '',
     label: text(fieldLabel(element)),
     ariaLabel: text(element.getAttribute('aria-label') || (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => labelText(document.getElementById(id))).join(' ')),
@@ -127,4 +127,4 @@ const metadata = (element: Control, id: string, groups = groupIDs(), readOccupie
     occupied: !readOccupied ? false : element instanceof HTMLSelectElement ? Boolean(element.value) && !/^(選択|選んで|都道府県を選|please select|select\b|--)/i.test(element.selectedOptions[0]?.text.trim() || '') : Boolean(element.value),
     options: element instanceof HTMLSelectElement ? [...element.options].slice(0, 60).map(option => ({ value: text(option.value), text: text(option.text), disabled: option.disabled || Boolean((option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled)) })) : []
 });
-export { candidates, eligible, metadata, fieldLabel, headings, groupIDs };
+export { candidates, eligible, metadata, fieldLabel, headings, groupIDs, visible, postalControl, nearbyLabel };
